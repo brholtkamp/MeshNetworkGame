@@ -2,15 +2,16 @@
 #define __MESHNODE_H__
 #include <SFML/Network.hpp>
 #include <SFML/System.hpp>
-#include <SFML/System/Time.hpp>
 #include <json/json.h>
 #include <iostream>
+#include <iomanip>
+#include <ctime>
 #include <sstream>
 #include <thread>
 #include <functional>
 #include <memory>
 
-static const sf::Int32 timeoutAmount = 15;
+const int listeningTimeout = 5000;
 
 class MeshNode {
 public:
@@ -24,9 +25,9 @@ public:
 
 private:
     std::thread listening_thread;
-    sf::SocketSelector selector;
-    std::vector<std::shared_ptr<sf::TcpSocket>> clients;
-    sf::TcpListener listener;
+    std::unique_ptr<sf::SocketSelector> selector;
+    std::unique_ptr<std::vector<std::shared_ptr<sf::TcpSocket>>> clients;
+    std::unique_ptr<sf::TcpListener> listener;
     bool listening;
     unsigned short listen_port;
 };
