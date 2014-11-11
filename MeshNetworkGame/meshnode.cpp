@@ -56,7 +56,9 @@ MeshNode::~MeshNode() {
 
 bool MeshNode::broadcast(std::string message) {
     sf::Packet packet;
-    packet << message;
+    Json::Value json_message;
+    json_message["message"] = message;
+    packet << json_message.toStyledString();
     bool success = true;
 
     for_each(clients->begin(), clients->end(), [&] (std::shared_ptr<sf::TcpSocket> client) { 
