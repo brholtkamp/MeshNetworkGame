@@ -5,20 +5,43 @@
 
 #include "MeshNode.h"
 
-using namespace std;
-
 int main(int argc, char *argv[]) {
-    std::unique_ptr<MeshNode> node(new MeshNode(1000));
-    std::unique_ptr<MeshNode> node2(new MeshNode(1001));
+    char mode;
+    std::cout << "Listen mode? (y/n)" << std::endl;
+    std::cin >> mode;
+    
+    if (mode == 'n') {
+        std::unique_ptr<MeshNode> node(new MeshNode());
+        node->startListening();
 
-    if (node->connectTo("127.0.0.1", 1001)) {
-        int counter = 0;
-        while (counter < 3) {
-            node->broadcast("This is a test of the emergency broadcast system!");
-            counter++;
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::string address;
+        unsigned short port;
+ 
+        std::cout << "Please enter a host to connect to: " << std::endl;
+        std::cin >> address;
+        std::cout << "Please enter a port to use: "<< std::endl;
+        std::cin >> port;
+        
+        if (node->connectTo(address, port)) {
+#if DEBUG
+            int counter = 0;
+            while (counter < 10000) {
+                node->sendTo(address, port, "Ping!");
+                counter++;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+#endif
+        }    
+    } else {
+        std::unique_ptr<MeshNode> node(new MeshNode());
+        node->startListening();
+
+        while(node->isListening()) {
+            std::cout << "Listening on " << node->getListeningPort() << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(5));
         }
-    }    
+    }
 
+    std::cin.ignore();
     return 0;
 }
