@@ -47,9 +47,6 @@ void MeshNode::listen() {
                                 if (message["message"] == "Ping!") {
                                     Log("Ping!");
                                     sendTo(std::get<0>(connections[i]), std::get<1>(connections[i]), "Pong!");
-                                } else if (message["message"] == "Pong!") {
-                                    Log("Pong!");
-                                    sendTo(std::get<0>(connections[i]), std::get<1>(connections[i]), "Ping!");
                                 } else {
                                     Log(message["message"].asString());
                                 }
@@ -86,6 +83,7 @@ void MeshNode::startListening() {
 
     listening = true;
     listening_thread = std::thread(&MeshNode::listen, this);
+    Log("Listening on " + listen_port);
 }
 
 void MeshNode::stopListening() {
@@ -118,7 +116,12 @@ bool MeshNode::broadcast(std::string message) {
     });
 
     if (!success) {
-        //Check all connections
+        Log("Broadcast failed to one or more clients; pruning list of clients");
+        for_each(connections.begin(), connections.end(), [&] (Connection connection) {
+            if (!checkConnection(connection)) {
+                closeConnection(connection);
+            }
+        });
     }
 
     return success;
@@ -128,6 +131,7 @@ bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
     std::shared_ptr<sf::TcpSocket> socket = std::shared_ptr<sf::TcpSocket>(new sf::TcpSocket());
 
     if (socket->connect(address, port) == sf::TcpSocket::Done) {
+        socket->setBlocking(false);
         selector->add(*socket);
         connections.push_back(Connection(address, port, socket));
         return true;
@@ -171,4 +175,12 @@ void MeshNode::closeConnection(Connection connection) {
     selector->remove(*std::get<2>(connection));
     std::swap(connection, connections.back());
     connections.pop_back();
+}
+
+bool MeshNode::checkConnection(Connection connection) {
+    if (std::get<2>(connection)->getRemoteAddress == sf::IpAddress::None) {
+        return false;
+    } else {
+        return true;
+    }
 }

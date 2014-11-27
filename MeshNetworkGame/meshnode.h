@@ -40,6 +40,7 @@ public:
     bool sendTo(sf::IpAddress address, unsigned short port, std::string message);
     bool optimizeFor(sf::IpAddress address, unsigned short port);
     void closeConnection(Connection connection);
+    bool checkConnection(Connection connection);
 
     bool broadcast(std::string message);
 private:

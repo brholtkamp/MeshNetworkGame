@@ -36,9 +36,8 @@ int main(int argc, char *argv[]) {
         std::unique_ptr<MeshNode> node(new MeshNode());
         node->startListening();
 
-        while(node->isListening()) {
-            std::cout << "Listening on " << node->getListeningPort() << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(5));
+        while(true) {
+            //Listening
         }
     }
 
