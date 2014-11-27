@@ -22,7 +22,8 @@ const int kListeningTimeout = 5000;
 const int kListeningPort = 10010;
 
 enum MessageTypes {
-    PING
+    PING,
+    PONG
 };
 
 struct Message {
@@ -53,12 +54,13 @@ public:
     bool isHandlingMessages();
 
     bool connectTo(sf::IpAddress address, unsigned short port);
-    void sendTo(sf::IpAddress address, unsigned short port, std::string message);
-    void sendTo(sf::IpAddress address, unsigned short port, Json::Value message);
+    bool sendTo(sf::IpAddress address, unsigned short port, std::string message);
+    bool sendTo(sf::IpAddress address, unsigned short port, Json::Value message);
     bool optimizeFor(sf::IpAddress address, unsigned short port);
     void closeConnection(Connection connection);
     bool checkConnection(Connection connection);
     bool optimizeConnection(Connection connection);
+    int numberOfConnections();
 
     bool broadcast(std::string message);
     bool broadcast(Json::Value message);

@@ -7,7 +7,7 @@
 
 int main(int argc, char *argv[]) {
     char mode;
-    std::cout << "Listen mode? (y/n)" << std::endl;
+    std::cout << "Listen mode? (y/n/t)" << std::endl;
     std::cin >> mode;
     
     if (mode == 'n') {
@@ -22,22 +22,51 @@ int main(int argc, char *argv[]) {
         std::cin >> port;
         
         if (node->connectTo(address, port)) {
-#if DEBUG
             int counter = 0;
             Json::Value value;
             value["type"] = PING;
             while (counter < 10000) {
-                node->sendTo(address, port, value);
-                counter++;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                if (node->sendTo(address, port, value)) {
+                    counter++;
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                } else {
+                    break;
+                }
             }
-#endif
-        }    
-    } else {
+        } 
+    } else if (mode == 't') {
         std::unique_ptr<MeshNode> node(new MeshNode());
 
+        std::string address;
+        address = "127.0.0.1";
+        unsigned short port;
+        port = 10010;
+
+        if (node->connectTo(address, port)) {
+            int counter = 0;
+            Json::Value value;
+            value["type"] = PING;
+            while (counter < 10000) {
+                if (node->sendTo(address, port, value)) {
+                    counter++;
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                } else if (node->numberOfConnections() == 0) {
+                    break;
+                }
+            }
+        }
+    } else {
+        std::unique_ptr<MeshNode> node(new MeshNode());
+        bool started = false;
         while(true) {
             //Listening
+            if (!started && node->numberOfConnections() != 0) {
+                started = true;
+            } else if (started && node->numberOfConnections() == 0) {
+                break;
+            } else {
+
+            }
         }
     }
 
