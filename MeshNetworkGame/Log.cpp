@@ -4,7 +4,7 @@ std::string getCurrentTime() {
     auto now = std::chrono::system_clock::now();
     auto current_time = std::chrono::system_clock::to_time_t(now);
     std::stringstream buffer;
-    buffer << "[" << std::put_time(std::localtime(&current_time), "%c") << "]";
+    buffer << "[" << std::put_time(std::localtime(const_cast<const std::time_t *>(&current_time)), "%c") << "]";
     return buffer.str();
 }
 

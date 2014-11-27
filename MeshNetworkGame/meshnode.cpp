@@ -5,7 +5,8 @@ MeshNode::MeshNode(unsigned short input_listen_port) {
     selector = std::unique_ptr<sf::SocketSelector>(new sf::SocketSelector);
 
     listen_port = input_listen_port;
-    listening = false;
+    startListening();
+    startHandlingMessages();
 }
 
 MeshNode::~MeshNode() {
@@ -13,6 +14,55 @@ MeshNode::~MeshNode() {
     if (isListening()) {
         stopListening();
     }
+    if (isHandlingMessages()) {
+        stopHandlingMessages();
+    }
+}
+
+void MeshNode::handleMessages() {
+    while (handling_messages) {
+        // Consume all messages
+        if (incoming_messages.size() != 0) { 
+            Message message = incoming_messages.front();
+
+            switch(message.message["type"].asInt()) {
+            case PING: 
+                Log("Ping!");
+                break;
+            default:
+                Log("Incoming: " + message.message.toStyledString());
+                break;
+            }
+            
+            incoming_messages.pop_front();
+        }
+        
+        if (outgoing_messages.size() != 0) {
+            Message message = outgoing_messages.front();
+            std::weak_ptr<sf::TcpSocket> socket;
+            socket = std::get<2>(message.connection);
+            sf::Packet packet;
+            packet << message.message.toStyledString();
+
+            if (socket.lock()->send(packet) == sf::Socket::Done) {
+                switch(message.message["type"].asInt()) {
+                case PING:
+                    Log("Pong");
+                    break;
+                default:
+                    Log("Outgoing: " + message.message.toStyledString());
+                    break;
+                }
+            } else {
+                Log("Failed to send message to " + std::get<0>(message.connection).toString() + ":" + std::to_string(std::get<1>(message.connection)));
+                closeConnection(message.connection);
+            }
+
+            outgoing_messages.pop_front();
+        }
+    }
+
+    return;
 }
 
 void MeshNode::listen() {
@@ -24,9 +74,7 @@ void MeshNode::listen() {
                     // Connection successful
                     connections.push_back(Connection(new_client->getRemoteAddress(), new_client->getRemotePort(), std::move(new_client)));
                     selector->add(*std::get<2>(connections[connections.size() - 1]));
-#if DEBUG
                     Log("Connection from: " + std::get<0>(connections[connections.size() - 1]).toString() + ":" + std::to_string(std::get<1>(connections[connections.size() - 1])));
-#endif
                 } else {
                     Log("Client failed to connect");
                 }
@@ -43,16 +91,13 @@ void MeshNode::listen() {
                                 Json::Reader reader;
                                 Json::Value message;
                                 reader.parse(buffer, message);
-#if DEBUG
-                                if (message["message"] == "Ping!") {
-                                    Log("Ping!");
-                                    sendTo(std::get<0>(connections[i]), std::get<1>(connections[i]), "Pong!");
-                                } else {
-                                    Log(message["message"].asString());
-                                }
-#endif
-                            }
-                            break;
+
+                                Message new_message;
+                                new_message.message = message;
+                                new_message.id = current_id++;
+                                incoming_messages.push_back(new_message);
+                           }
+                           break;
                         case sf::Socket::Disconnected: 
                         case sf::Socket::Error:
                             closeConnection(connections[i]);
@@ -83,7 +128,7 @@ void MeshNode::startListening() {
 
     listening = true;
     listening_thread = std::thread(&MeshNode::listen, this);
-    Log("Listening on " + listen_port);
+    Log("Listening on " + std::to_string(listen_port));
 }
 
 void MeshNode::stopListening() {
@@ -91,6 +136,7 @@ void MeshNode::stopListening() {
     listening_thread.join();
 
     selector->remove(*listener);
+    Log("Stopped listening");
 }
 
 bool MeshNode::isListening() {
@@ -101,28 +147,63 @@ unsigned short MeshNode::getListeningPort() {
     return listen_port;
 }
 
+void MeshNode::startHandlingMessages() {
+    current_id = 0;
+    handling_messages = true;
+
+    message_handler_thread = std::thread(&MeshNode::handleMessages, this);
+    Log("Ready to handle messages");
+}
+
+void MeshNode::stopHandlingMessages() {
+    handling_messages = false;
+    message_handler_thread.join();
+
+    Log("Stopped handling messages");
+}
+
+bool MeshNode::isHandlingMessages() {
+    return handling_messages;
+}
+
 bool MeshNode::broadcast(std::string message) {
-    sf::Packet packet;
-    Json::Value json_message;
-    json_message["message"] = message;
-    packet << json_message.toStyledString();
     bool success = true;
 
     for_each(connections.begin(), connections.end(), [&] (Connection connection) { 
-        if (std::get<2>(connection)->send(packet) != sf::Socket::Done) {
+        if (checkConnection(connection)) {
+            Message new_message;
+            Json::Value value;
+            value["message"] = message;
+            value["timestamp"] = getCurrentTime();
+            new_message.connection = connection;
+            new_message.id = current_id++;
+            new_message.message = value;
+            outgoing_messages.push_back(new_message);
+        } else {
+            Log("Broadcast failed for " + std::get<0>(connection).toString() + ":" + std::to_string(std::get<1>(connection))); 
             success = false;
-            Log("Client " + std::get<0>(connection).toString() + " failed to receive the message");
         }
     });
 
-    if (!success) {
-        Log("Broadcast failed to one or more clients; pruning list of clients");
-        for_each(connections.begin(), connections.end(), [&] (Connection connection) {
-            if (!checkConnection(connection)) {
-                closeConnection(connection);
-            }
-        });
-    }
+    return success;
+}
+
+bool MeshNode::broadcast(Json::Value message) {
+    bool success = true;
+
+    for_each(connections.begin(), connections.end(), [&] (Connection connection) { 
+        if (checkConnection(connection)) {
+            Message new_message;
+            new_message.connection = connection;
+            new_message.id = current_id++;
+            message["timestamp"] = getCurrentTime();
+            new_message.message = message;
+            outgoing_messages.push_back(new_message);
+        } else {
+            Log("Broadcast failed for " + std::get<0>(connection).toString() + ":" + std::to_string(std::get<1>(connection))); 
+            success = false;
+        }
+    });
 
     return success;
 }
@@ -141,32 +222,50 @@ bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
     }
 }
 
-bool MeshNode::sendTo(sf::IpAddress address, unsigned short port, std::string message) {
-    std::weak_ptr<sf::TcpSocket> socket;
+void MeshNode::sendTo(sf::IpAddress address, unsigned short port, std::string message) {
+    Connection connection;
     bool existingSocket = false;
 
     for (size_t i = 0; i < connections.size(); i++) {
         if (std::get<0>(connections[i]) == address && std::get<1>(connections[i]) == port) {
-            socket = std::get<2>(connections[i]);
+            connection = connections[i];
             existingSocket = true;
         }
     }
 
     if (existingSocket) {
-        sf::Packet packet;
-        Json::Value final_message;
-        final_message["message"] = message;
-        packet << final_message.toStyledString();
-
-        if (socket.lock()->send(packet) == sf::Socket::Done) {
-            return true;
-        } else {
-            Log("Failed to send message to " + address.toString() + ":" + std::to_string(port));
-            return false;
-        }
+        Message new_message;
+        Json::Value value;
+        value["message"] = message;
+        value["timestamp"] = getCurrentTime();
+        new_message.message = value;
+        new_message.id = current_id++;
+        new_message.connection = connection;
+        outgoing_messages.push_back(new_message);
     } else {
         Log("There is no current socket connection to " + address.toString() + ":" + std::to_string(port));
-        return false;
+    }
+}
+
+void MeshNode::sendTo(sf::IpAddress address, unsigned short port, Json::Value message) {
+    Connection connection;
+    bool existingSocket = false;
+
+    for (size_t i = 0; i < connections.size(); i++) {
+        if (std::get<0>(connections[i]) == address && std::get<1>(connections[i]) == port) {
+            connection = connections[i];
+            existingSocket = true;
+        }
+    }
+
+    if (existingSocket) {
+        Message new_message;
+        new_message.message = message;
+        new_message.id = current_id++;
+        new_message.connection = connection;
+        outgoing_messages.push_back(new_message);
+    } else {
+        Log("There is no current socket connection to " + address.toString() + ":" + std::to_string(port));
     }
 }
 
@@ -178,9 +277,13 @@ void MeshNode::closeConnection(Connection connection) {
 }
 
 bool MeshNode::checkConnection(Connection connection) {
-    if (std::get<2>(connection)->getRemoteAddress == sf::IpAddress::None) {
+    if (std::get<2>(connection)->getRemoteAddress() == sf::IpAddress::None) {
         return false;
     } else {
         return true;
     }
+}
+
+bool MeshNode::ping(Connection connection) {
+    return true;
 }

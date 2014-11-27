@@ -12,7 +12,6 @@ int main(int argc, char *argv[]) {
     
     if (mode == 'n') {
         std::unique_ptr<MeshNode> node(new MeshNode());
-        node->startListening();
 
         std::string address;
         unsigned short port;
@@ -25,8 +24,10 @@ int main(int argc, char *argv[]) {
         if (node->connectTo(address, port)) {
 #if DEBUG
             int counter = 0;
+            Json::Value value;
+            value["type"] = PING;
             while (counter < 10000) {
-                node->sendTo(address, port, "Ping!");
+                node->sendTo(address, port, value);
                 counter++;
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
@@ -34,7 +35,6 @@ int main(int argc, char *argv[]) {
         }    
     } else {
         std::unique_ptr<MeshNode> node(new MeshNode());
-        node->startListening();
 
         while(true) {
             //Listening
