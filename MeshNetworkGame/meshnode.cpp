@@ -20,9 +20,6 @@ MeshNode::~MeshNode() {
 }
 
 void MeshNode::handleMessages() {
-    Json::Value pong;
-    pong["type"] = PONG;
-
     while (handling_messages) {
         // Consume all messages
         if (incoming_messages.size() != 0) { 
@@ -30,11 +27,9 @@ void MeshNode::handleMessages() {
 
             switch(message.message["type"].asInt()) {
             case PING:
-                sendTo(std::get<0>(message.connection), std::get<1>(message.connection), pong);
-                Log("Got Ping!");
+                pong(message);
                 break;
             case PONG:
-                Log("Got Pong!");
                 break;
             default:
                 Log("Incoming: " + message.message.toStyledString());
@@ -54,10 +49,8 @@ void MeshNode::handleMessages() {
             if (socket.lock()->send(packet) == sf::Socket::Done) {
                 switch(message.message["type"].asInt()) {
                 case PING:
-                    Log("Sending Ping!");
                     break;
                 case PONG:
-                    Log("Sending Pong!");
                     break;
                 default:
                     Log("Outgoing: " + message.message.toStyledString());
@@ -300,8 +293,39 @@ bool MeshNode::checkConnection(Connection connection) {
     }
 }
 
-bool MeshNode::ping(Connection connection) {
-    return true;
+bool MeshNode::ping(sf::IpAddress address, unsigned short port) {
+    Connection connection;
+    bool existingSocket = false;
+
+    for (size_t i = 0; i < connections.size(); i++) {
+        if (std::get<0>(connections[i]) == address && std::get<1>(connections[i]) == port) {
+            connection = connections[i];
+            existingSocket = true;
+        }
+    }
+
+    if (existingSocket) {
+        Json::Value value;
+        Message ping;
+        value["type"] = PING;
+        value["ping"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        ping.message = value;
+        ping.connection = connection;
+        ping.id = current_id++;
+        outgoing_messages.push_back(ping);
+        
+        return true;
+    } else {
+        Log("There is no current socket connection to " + address.toString() + ":" + std::to_string(port));
+        return false;
+    }
+}
+
+void MeshNode::pong(Message ping) {
+    Json::Value value = ping.message;
+    value["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+
+    Log(std::to_string(ping.id) + ": from " + std::get<0>(ping.connection).toString() + ":" + std::to_string(std::get<1>(ping.connection)) + " is " + std::to_string(std::stoll(value["pong"].asString()) - std::stoll(value["ping"].asString())) + "ms"); 
 }
 
 int MeshNode::numberOfConnections() {

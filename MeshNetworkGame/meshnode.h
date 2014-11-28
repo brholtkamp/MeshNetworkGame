@@ -64,7 +64,8 @@ public:
 
     bool broadcast(std::string message);
     bool broadcast(Json::Value message);
-    bool ping(Connection connection);
+    bool ping(sf::IpAddress address, unsigned short port);
+    void pong(Message ping);
 private:
     // Listening
     std::thread listening_thread;

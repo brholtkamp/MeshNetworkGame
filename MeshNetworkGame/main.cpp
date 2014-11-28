@@ -23,10 +23,8 @@ int main(int argc, char *argv[]) {
         
         if (node->connectTo(address, port)) {
             int counter = 0;
-            Json::Value value;
-            value["type"] = PING;
             while (counter < 10000) {
-                if (node->sendTo(address, port, value)) {
+                if (node->ping(address, port)) {
                     counter++;
                     std::this_thread::sleep_for(std::chrono::seconds(1));
                 } else {
@@ -44,10 +42,8 @@ int main(int argc, char *argv[]) {
 
         if (node->connectTo(address, port)) {
             int counter = 0;
-            Json::Value value;
-            value["type"] = PING;
             while (counter < 10000) {
-                if (node->sendTo(address, port, value)) {
+                if (node->ping(address, port)) {
                     counter++;
                     std::this_thread::sleep_for(std::chrono::seconds(1));
                 } else if (node->numberOfConnections() == 0) {
