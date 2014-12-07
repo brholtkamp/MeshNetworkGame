@@ -13,11 +13,23 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="MeshNode">
-      <UniqueIdentifier>{99b1174f-7038-4d8b-b175-b1eb40a764f6}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Logging">
       <UniqueIdentifier>{7f0c7fc9-01c6-49f5-8305-d536d249a778}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Networking">
+      <UniqueIdentifier>{99b1174f-7038-4d8b-b175-b1eb40a764f6}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Networking\MessageHandlers">
+      <UniqueIdentifier>{a734a0f6-1c49-4dcf-928c-32107eb1c7ad}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Networking\Message">
+      <UniqueIdentifier>{8683007b-fe37-4c8f-8712-a3a658f9bb53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Networking\Connections">
+      <UniqueIdentifier>{fc7e6bd0-8b5c-49f8-9824-0d6b74773bb5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utility">
+      <UniqueIdentifier>{b7687eb0-65df-4879-9d0c-47f8864927a8}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -27,11 +39,26 @@
     <ClCompile Include="..\json\jsoncpp.cpp">
       <Filter>Resource Files</Filter>
     </ClCompile>
-    <ClCompile Include="MeshNode.cpp">
-      <Filter>MeshNode</Filter>
-    </ClCompile>
     <ClCompile Include="Log.cpp">
       <Filter>Logging</Filter>
+    </ClCompile>
+    <ClCompile Include="MeshNode.cpp">
+      <Filter>Networking</Filter>
+    </ClCompile>
+    <ClCompile Include="PingMessageHandler.cpp">
+      <Filter>Networking\MessageHandlers</Filter>
+    </ClCompile>
+    <ClCompile Include="SystemMessageHandler.cpp">
+      <Filter>Networking\MessageHandlers</Filter>
+    </ClCompile>
+    <ClCompile Include="Message.cpp">
+      <Filter>Networking\Message</Filter>
+    </ClCompile>
+    <ClCompile Include="Connection.cpp">
+      <Filter>Networking\Connections</Filter>
+    </ClCompile>
+    <ClCompile Include="ConnectionManager.cpp">
+      <Filter>Networking\Connections</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -41,11 +68,32 @@
     <ClInclude Include="..\json\json-forwards.h">
       <Filter>Resource Files</Filter>
     </ClInclude>
-    <ClInclude Include="MeshNode.h">
-      <Filter>MeshNode</Filter>
-    </ClInclude>
     <ClInclude Include="Log.h">
       <Filter>Logging</Filter>
+    </ClInclude>
+    <ClInclude Include="MeshNode.h">
+      <Filter>Networking</Filter>
+    </ClInclude>
+    <ClInclude Include="SystemMessageHandler.h">
+      <Filter>Networking\MessageHandlers</Filter>
+    </ClInclude>
+    <ClInclude Include="MessageHandler.h">
+      <Filter>Networking\MessageHandlers</Filter>
+    </ClInclude>
+    <ClInclude Include="PingMessageHandler.h">
+      <Filter>Networking\MessageHandlers</Filter>
+    </ClInclude>
+    <ClInclude Include="Message.h">
+      <Filter>Networking\Message</Filter>
+    </ClInclude>
+    <ClInclude Include="Connection.h">
+      <Filter>Networking\Connections</Filter>
+    </ClInclude>
+    <ClInclude Include="ConnectionManager.h">
+      <Filter>Networking\Connections</Filter>
+    </ClInclude>
+    <ClInclude Include="MessageQueue.h">
+      <Filter>Utility</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

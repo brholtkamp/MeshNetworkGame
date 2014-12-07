@@ -8,83 +8,67 @@
 #include <iomanip>
 #include <list>
 #include <deque>
+#include <map>
 #include <ctime>
 #include <sstream>
 #include <thread>
 #include <functional>
 #include <memory>
+#include <mutex>
 
 #include "Log.h"
+#include "Message.h"
+#include "MessageHandler.h"
+#include "ConnectionManager.h"
+#include "MessageQueue.h"
 
-typedef std::tuple<sf::IpAddress, unsigned short, std::shared_ptr<sf::TcpSocket>> Connection;
+class MessageHandler;
+class ConnectionManager;
+class Connection;
 
 const int kListeningTimeout = 5000;
+const int kHeartBeatTimeout = 2500;
 const int kListeningPort = 10010;
-
-enum MessageTypes {
-    PING,
-    PONG
-};
-
-struct Message {
-    Json::Value message;
-    Connection connection;
-    unsigned int id;
-};
-
-struct OptimalConnection {
-    sf::IpAddress remote_address;
-    std::vector<sf::IpAddress> address_chain;
-};
 
 class MeshNode {
 public:
-    MeshNode(unsigned short input_listen_port = kListeningPort);
+    MeshNode(unsigned short _listening_port = kListeningPort);
     ~MeshNode();
 
-    void listen(); // Main function for handling responses
+    void listen();
     void startListening();
     void stopListening();
     bool isListening();
     unsigned short getListeningPort();
 
-    void handleMessages();
+    void handleMessage();
+    bool registerMessageHandler(std::shared_ptr<MessageHandler> handler);
+    void listAllHandlers();
     void startHandlingMessages();
     void stopHandlingMessages();
     bool isHandlingMessages();
 
     bool connectTo(sf::IpAddress address, unsigned short port);
-    bool sendTo(sf::IpAddress address, unsigned short port, std::string message);
-    bool sendTo(sf::IpAddress address, unsigned short port, Json::Value message);
-    bool optimizeFor(sf::IpAddress address, unsigned short port);
-    void closeConnection(Connection connection);
-    bool checkConnection(Connection connection);
-    bool optimizeConnection(Connection connection);
-    int numberOfConnections();
+    unsigned int numberOfConnections();
 
-    bool broadcast(std::string message);
-    bool broadcast(Json::Value message);
-    bool ping(sf::IpAddress address, unsigned short port);
-    void pong(Message ping);
+    void ping(sf::IpAddress address, unsigned short port);
+    bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
+    void broadcast(std::string type, Json::Value message);
+
 private:
-    // Listening
-    std::thread listening_thread;
-    std::unique_ptr<sf::SocketSelector> selector;
-    std::unique_ptr<sf::TcpListener> listener;
+    std::thread listeningThread;
+    unsigned short listeningPort;
+    sf::SocketSelector selector;
+    sf::TcpListener listener;
     bool listening;
-    unsigned short listen_port;
 
-    // Current connections
-    std::vector<Connection> connections; 
-    std::vector<OptimalConnection> optimal_connections;
+    std::unique_ptr<ConnectionManager> connections;
 
-    //Messaging Queues
-    std::thread message_handler_thread;
-    std::deque<Message> outgoing_messages;
-    std::deque<Message> incoming_messages;
-    unsigned int current_id;
-    bool handling_messages;
+    std::thread messageHandlingThread;
+    std::map<std::string, std::shared_ptr<MessageHandler>> handlers;
+    bool handlingMessages;
 
+    MessageQueue<Message> outgoingMessages;
+    MessageQueue<Message> incomingMessages;
 };
-
 #endif // __MESHNODE_H__

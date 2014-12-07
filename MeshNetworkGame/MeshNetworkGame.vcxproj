@@ -75,15 +75,27 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\json\jsoncpp.cpp" />
+    <ClCompile Include="Connection.cpp" />
+    <ClCompile Include="ConnectionManager.cpp" />
     <ClCompile Include="Log.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MeshNode.cpp" />
+    <ClCompile Include="Message.cpp" />
+    <ClCompile Include="PingMessageHandler.cpp" />
+    <ClCompile Include="SystemMessageHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\json\json-forwards.h" />
     <ClInclude Include="..\json\json.h" />
+    <ClInclude Include="Connection.h" />
+    <ClInclude Include="ConnectionManager.h" />
+    <ClInclude Include="MessageQueue.h" />
+    <ClInclude Include="Message.h" />
+    <ClInclude Include="MessageHandler.h" />
     <ClInclude Include="Log.h" />
     <ClInclude Include="MeshNode.h" />
+    <ClInclude Include="PingMessageHandler.h" />
+    <ClInclude Include="SystemMessageHandler.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

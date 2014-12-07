@@ -4,15 +4,21 @@
 #include <chrono>
 
 #include "MeshNode.h"
+#include "PingMessageHandler.h"
+#include "SystemMessageHandler.h"
 
 int main(int argc, char *argv[]) {
-    char mode;
+    std::shared_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
+    std::shared_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
+    std::shared_ptr<MeshNode> node(new MeshNode(10010));
+    node->registerMessageHandler(pingHandler);
+    node->registerMessageHandler(systemHandler);
+
+   char mode;
     std::cout << "Listen mode? (y/n/t)" << std::endl;
     std::cin >> mode;
     
     if (mode == 'n') {
-        std::unique_ptr<MeshNode> node(new MeshNode());
-
         std::string address;
         unsigned short port;
  
@@ -24,17 +30,12 @@ int main(int argc, char *argv[]) {
         if (node->connectTo(address, port)) {
             int counter = 0;
             while (counter < 10000) {
-                if (node->ping(address, port)) {
-                    counter++;
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                } else {
-                    break;
-                }
+                node->ping(address, port);
+                counter++;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         } 
     } else if (mode == 't') {
-        std::unique_ptr<MeshNode> node(new MeshNode());
-
         std::string address;
         address = "127.0.0.1";
         unsigned short port;
@@ -43,26 +44,14 @@ int main(int argc, char *argv[]) {
         if (node->connectTo(address, port)) {
             int counter = 0;
             while (counter < 10000) {
-                if (node->ping(address, port)) {
-                    counter++;
-                    std::this_thread::sleep_for(std::chrono::seconds(1));
-                } else if (node->numberOfConnections() == 0) {
-                    break;
-                }
+                node->ping(address, port);
+                counter++;
+                std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         }
     } else {
-        std::unique_ptr<MeshNode> node(new MeshNode());
-        bool started = false;
-        while(true) {
-            //Listening
-            if (!started && node->numberOfConnections() != 0) {
-                started = true;
-            } else if (started && node->numberOfConnections() == 0) {
-                break;
-            } else {
+        while(node->isListening()) {
 
-            }
         }
     }
 
