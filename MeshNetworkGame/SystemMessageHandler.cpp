@@ -6,6 +6,6 @@ SystemMessageHandler::SystemMessageHandler() {
     messageTypes.push_back("heartbeat");
 }
 
-void SystemMessageHandler::handleMessage(Message message) {
-    Log(message.toString());
+void SystemMessageHandler::handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type) {
+    Log(message.toStyledString());
 }

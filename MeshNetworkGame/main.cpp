@@ -8,14 +8,14 @@
 #include "SystemMessageHandler.h"
 
 int main(int argc, char *argv[]) {
-    std::shared_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
-    std::shared_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
-    std::shared_ptr<MeshNode> node(new MeshNode(10010));
-    node->registerMessageHandler(pingHandler);
-    node->registerMessageHandler(systemHandler);
+    std::unique_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
+    std::unique_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
+    std::unique_ptr<MeshNode> node(new MeshNode(10010));
+    node->registerMessageHandler(std::move(pingHandler));
+    node->registerMessageHandler(std::move(systemHandler));
 
-   char mode;
-    std::cout << "Listen mode? (y/n/t)" << std::endl;
+    char mode;
+    std::cout << "Listen mode? (y/n)" << std::endl;
     std::cin >> mode;
     
     if (mode == 'n') {
@@ -28,33 +28,17 @@ int main(int argc, char *argv[]) {
         std::cin >> port;
         
         if (node->connectTo(address, port)) {
-            int counter = 0;
-            while (counter < 10000) {
+            while (node->numberOfConnections() > 0) {
                 node->ping(address, port);
-                counter++;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             }
         } 
-    } else if (mode == 't') {
-        std::string address;
-        address = "127.0.0.1";
-        unsigned short port;
-        port = 10010;
-
-        if (node->connectTo(address, port)) {
-            int counter = 0;
-            while (counter < 10000) {
-                node->ping(address, port);
-                counter++;
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-            }
-        }
     } else {
         while(node->isListening()) {
-
+            node->outputConnections();
+            std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     }
 
-    std::cin.ignore();
     return 0;
 }

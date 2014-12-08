@@ -22,12 +22,6 @@
     <Filter Include="Networking\MessageHandlers">
       <UniqueIdentifier>{a734a0f6-1c49-4dcf-928c-32107eb1c7ad}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Networking\Message">
-      <UniqueIdentifier>{8683007b-fe37-4c8f-8712-a3a658f9bb53}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Networking\Connections">
-      <UniqueIdentifier>{fc7e6bd0-8b5c-49f8-9824-0d6b74773bb5}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Utility">
       <UniqueIdentifier>{b7687eb0-65df-4879-9d0c-47f8864927a8}</UniqueIdentifier>
     </Filter>
@@ -51,15 +45,6 @@
     <ClCompile Include="SystemMessageHandler.cpp">
       <Filter>Networking\MessageHandlers</Filter>
     </ClCompile>
-    <ClCompile Include="Message.cpp">
-      <Filter>Networking\Message</Filter>
-    </ClCompile>
-    <ClCompile Include="Connection.cpp">
-      <Filter>Networking\Connections</Filter>
-    </ClCompile>
-    <ClCompile Include="ConnectionManager.cpp">
-      <Filter>Networking\Connections</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\json\json.h">
@@ -82,15 +67,6 @@
     </ClInclude>
     <ClInclude Include="PingMessageHandler.h">
       <Filter>Networking\MessageHandlers</Filter>
-    </ClInclude>
-    <ClInclude Include="Message.h">
-      <Filter>Networking\Message</Filter>
-    </ClInclude>
-    <ClInclude Include="Connection.h">
-      <Filter>Networking\Connections</Filter>
-    </ClInclude>
-    <ClInclude Include="ConnectionManager.h">
-      <Filter>Networking\Connections</Filter>
     </ClInclude>
     <ClInclude Include="MessageQueue.h">
       <Filter>Utility</Filter>

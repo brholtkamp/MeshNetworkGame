@@ -7,6 +7,6 @@ class SystemMessageHandler : public MessageHandler {
 public:
     SystemMessageHandler();
 
-    void handleMessage(Message message);
+    void handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type);
 };
 #endif // __SYSTEM_MESSAGE_HANDLER_H__

@@ -17,16 +17,32 @@
 #include <mutex>
 
 #include "Log.h"
-#include "Message.h"
 #include "MessageHandler.h"
-#include "ConnectionManager.h"
 #include "MessageQueue.h"
 
 class MessageHandler;
 class ConnectionManager;
-class Connection;
 
-const int kListeningTimeout = 5000;
+struct Connection {
+    std::unique_ptr<sf::TcpSocket> socket;
+    sf::IpAddress address;
+    unsigned short port;
+};
+
+struct Response {
+    sf::IpAddress address;
+    unsigned short port;
+    std::string type;
+};
+
+struct Message {
+    sf::IpAddress address;
+    unsigned short port;
+    Json::Value contents;
+    std::string type;
+};
+
+const int kListeningTimeout = 2500;
 const int kHeartBeatTimeout = 2500;
 const int kListeningPort = 10010;
 
@@ -42,7 +58,7 @@ public:
     unsigned short getListeningPort();
 
     void handleMessage();
-    bool registerMessageHandler(std::shared_ptr<MessageHandler> handler);
+    bool registerMessageHandler(std::unique_ptr<MessageHandler> handler);
     void listAllHandlers();
     void startHandlingMessages();
     void stopHandlingMessages();
@@ -52,20 +68,26 @@ public:
     unsigned int numberOfConnections();
 
     void ping(sf::IpAddress address, unsigned short port);
+    long long pong(Json::Value response);
     bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
     void broadcast(std::string type, Json::Value message);
-
+    void outputConnections();
 private:
+    bool addConnection(sf::IpAddress address, unsigned short port, std::unique_ptr<sf::TcpSocket> socket);
+    bool connectionExists(sf::IpAddress address, unsigned short port);
+    bool closeConnection(sf::IpAddress address, unsigned short port);
+
     std::thread listeningThread;
+    sf::IpAddress listeningAddress;
     unsigned short listeningPort;
-    sf::SocketSelector selector;
-    sf::TcpListener listener;
+    std::unique_ptr<sf::SocketSelector> selector;
+    std::unique_ptr<sf::TcpListener> listener;
     bool listening;
 
-    std::unique_ptr<ConnectionManager> connections;
+    std::vector<std::unique_ptr<Connection>> connections;
 
     std::thread messageHandlingThread;
-    std::map<std::string, std::shared_ptr<MessageHandler>> handlers;
+    std::vector<std::unique_ptr<MessageHandler>> handlers;
     bool handlingMessages;
 
     MessageQueue<Message> outgoingMessages;
