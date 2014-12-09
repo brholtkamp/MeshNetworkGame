@@ -21,34 +21,34 @@
 #include "MessageQueue.h"
 
 class MessageHandler;
-class ConnectionManager;
+
+struct ConnectionInfo {
+    std::string name;
+    sf::IpAddress address;
+    unsigned short port;
+};
 
 struct Connection {
     std::unique_ptr<sf::TcpSocket> socket;
-    sf::IpAddress address;
-    unsigned short port;
-};
-
-struct Response {
-    sf::IpAddress address;
-    unsigned short port;
-    std::string type;
+    ConnectionInfo user;
+    std::vector<ConnectionInfo> pathway;
 };
 
 struct Message {
-    sf::IpAddress address;
-    unsigned short port;
+    ConnectionInfo destination;
     Json::Value contents;
     std::string type;
+    std::vector<ConnectionInfo> pathway;
 };
 
 const int kListeningTimeout = 2500;
 const int kHeartBeatTimeout = 2500;
 const int kListeningPort = 10010;
+const std::string kDefaultName = "user";
 
 class MeshNode {
 public:
-    MeshNode(unsigned short _listening_port = kListeningPort);
+    MeshNode(unsigned short _listening_port = kListeningPort, std::string username = kDefaultName);
     ~MeshNode();
 
     void listen();
@@ -69,7 +69,9 @@ public:
 
     void ping(sf::IpAddress address, unsigned short port);
     long long pong(Json::Value response);
+
     bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
+    bool optimizeFor(sf::IpAddress address, unsigned short port);
     void broadcast(std::string type, Json::Value message);
     void outputConnections();
 private:
@@ -78,8 +80,7 @@ private:
     bool closeConnection(sf::IpAddress address, unsigned short port);
 
     std::thread listeningThread;
-    sf::IpAddress listeningAddress;
-    unsigned short listeningPort;
+    ConnectionInfo listenerInfo;
     std::unique_ptr<sf::SocketSelector> selector;
     std::unique_ptr<sf::TcpListener> listener;
     bool listening;

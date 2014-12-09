@@ -8,9 +8,11 @@
 #include "SystemMessageHandler.h"
 
 int main(int argc, char *argv[]) {
+    std::ios_base::sync_with_stdio(false);
+    std::string username = "brian";
     std::unique_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
     std::unique_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
-    std::unique_ptr<MeshNode> node(new MeshNode(10010));
+    std::unique_ptr<MeshNode> node(new MeshNode(10010, username));
     node->registerMessageHandler(std::move(pingHandler));
     node->registerMessageHandler(std::move(systemHandler));
 

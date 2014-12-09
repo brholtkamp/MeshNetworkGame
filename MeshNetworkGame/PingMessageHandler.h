@@ -8,9 +8,5 @@ public:
     PingMessageHandler();
 
     void handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type);
-
-    double averagePing;
-    long long currentNumberOfPings;
-    double currentSumOfPings;
 };
 #endif // __PING_MESSAGE_HANDLER_H__
