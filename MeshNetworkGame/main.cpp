@@ -37,7 +37,6 @@ int main(int argc, char *argv[]) {
         } 
     } else {
         while(node->isListening()) {
-            node->outputConnections();
             std::this_thread::sleep_for(std::chrono::seconds(10));
         }
     }

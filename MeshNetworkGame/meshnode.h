@@ -32,6 +32,7 @@ struct Connection {
     std::unique_ptr<sf::TcpSocket> socket;
     ConnectionInfo user;
     std::vector<ConnectionInfo> pathway;
+    int currentPing;
 };
 
 struct Message {
@@ -68,7 +69,8 @@ public:
     unsigned int numberOfConnections();
 
     void ping(sf::IpAddress address, unsigned short port);
-    long long pong(Json::Value response);
+    unsigned int pong(sf::IpAddress address, unsigned short port, Json::Value message);
+    void updatePing(sf::IpAddress address, unsigned short port, int ping);
 
     bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
     bool optimizeFor(sf::IpAddress address, unsigned short port);

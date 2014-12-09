@@ -223,8 +223,21 @@ void MeshNode::ping(sf::IpAddress address, unsigned short port) {
     }
 }
 
-long long MeshNode::pong(Json::Value response) {
-    return std::stoll(response["pong"].asString()) - std::stoll(response["ping"].asString());
+unsigned int MeshNode::pong(sf::IpAddress address, unsigned short port, Json::Value message) {
+    message["result"] = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
+    if (!sendMessage(address, port, "pongresult", message)) {
+        Log("Failed to send result to destination");
+    }
+    return message["result"].asUInt();
+}
+
+void MeshNode::updatePing(sf::IpAddress address, unsigned short port, int ping) {
+    for (auto connection = connections.begin(); connection != connections.end(); connection++) {
+        if (connection->get()->user.address == address && connection->get()->user.port == port) {
+            connection->get()->currentPing = ping;
+            Log(address.toString() + ":" + std::to_string(port) + " = " + std::to_string(ping) + "ms");
+        }
+    }
 }
 
 bool MeshNode::sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message) {
@@ -309,6 +322,7 @@ bool MeshNode::addConnection(sf::IpAddress address, unsigned short port, std::un
     newConnection->socket = std::move(_socket);
     connections.push_back(std::move(newConnection));
     Log("Connection to " + connections.back()->user.address.toString() + ":" + std::to_string(connections.back()->user.port)+ " successful!");
+    outputConnections();
     return true;
 }
 

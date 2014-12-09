@@ -3,6 +3,10 @@
 PingMessageHandler::PingMessageHandler() {
     messageTypes.push_back("ping");
     messageTypes.push_back("pong");
+    messageTypes.push_back("pongresult");
+
+    sumPings = 0;
+    numPings = 0;
 }
 
 void PingMessageHandler::handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type) {
@@ -12,6 +16,16 @@ void PingMessageHandler::handleMessage(Json::Value message, sf::IpAddress fromAd
             Log("Failed to send back ping");
         }
     } else if (type == "pong") {
-        Log(std::to_string(node->pong(message)) + "ms");
+        sumPings += node->pong(fromAddress, fromPort, message);
+        numPings++;
+        if (numPings % kPingUpdateRate == 0) {
+            node->updatePing(fromAddress, fromPort, static_cast<int>(static_cast<double>(sumPings) / static_cast<double>(numPings)));
+        }
+    } else if (type == "pongresult") {
+        sumPings += message["result"].asUInt64();
+        numPings++;
+        if (numPings % kPingUpdateRate == 0) {
+            node->updatePing(fromAddress, fromPort, static_cast<int>(static_cast<double>(sumPings) / static_cast<double>(numPings)));
+        }
     }
 }
