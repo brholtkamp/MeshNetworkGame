@@ -11,6 +11,7 @@ MeshNode::MeshNode(unsigned short _listeningPort) {
     startHandlingMessages();
     startListening();
     startSendingHeartbeats();
+    startReportingPings();
 }
 
 MeshNode::~MeshNode() {
@@ -24,6 +25,10 @@ MeshNode::~MeshNode() {
 
     if (isSendingHeartbeats()) {
         stopSendingHeartbeats();
+    }
+
+    if (isReportingPings()) {
+        stopReportingPings();
     }
 }
 
@@ -162,9 +167,17 @@ void MeshNode::heartbeat(sf::IpAddress address, unsigned short port) {
             return;
         } 
         ping(address, port);
-        Log << connections[username]->currentPing << "ms" <<std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(kHeartbeatRate));
+    }
+
+    return;
+}
+
+void MeshNode::reportPings() {
+    while (reportingPings) {
+        outputConnections();
+        std::this_thread::sleep_for(std::chrono::seconds(kPingUpdateRate));
     }
 
     return;
@@ -225,6 +238,20 @@ bool MeshNode::isSendingHeartbeats() {
     return sendingHeartbeats;
 }
 
+void MeshNode::startReportingPings() {
+    reportingPings = true;
+    pingReportThread = std::thread(&MeshNode::reportPings, this);
+}
+
+void MeshNode::stopReportingPings() {
+    reportingPings = false;
+    pingReportThread.join();
+}
+
+bool MeshNode::isReportingPings() {
+    return reportingPings;
+}
+
 bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
     std::unique_ptr<sf::TcpSocket> socket = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket);
 
@@ -253,7 +280,7 @@ void MeshNode::ping(sf::IpAddress address, unsigned short port) {
 std::string MeshNode::pong(sf::IpAddress address, unsigned short port, Json::Value message) {
     message["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
     message["result"] = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
-    if (!sendMessage(address, port, "pongresult", message)) {
+    if (!sendMessage(address, port, "result", message)) {
         Log << "Failed to send result to destination" << std::endl;
     }
     return message["result"].asString();
@@ -405,7 +432,6 @@ bool MeshNode::closeConnection(sf::IpAddress address, unsigned short port) {
 }
 
 void MeshNode::outputConnections() {
-    Log << "All connections:" << std::endl;
     for (auto& connection : connections) {
         Log << connection.second->user.address << ":" << connection.second->user.port << " = " << connection.second->currentPing << "ms" << std::endl;
     }

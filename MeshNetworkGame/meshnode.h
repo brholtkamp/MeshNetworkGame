@@ -21,7 +21,8 @@
 #include "SystemMessageHandler.h"
 #include "MessageQueue.h"
 
-#define Log std::cout
+#define Output std::cout
+#define Log std::cerr
 
 class MessageHandler;
 class PingMessageHandler;
@@ -50,12 +51,13 @@ struct Message {
     std::vector<ConnectionInfo> pathway;
 };
 
+const int kListeningPort = 10010;  // Default listening port
 const int kListeningTimeout = 2500; // Cancel a socket if it exceeds x ms
 const int kHeartbeatTimeout = 2500; // Cancel a connection if it exceeds x ms
 const int kHeartbeatRate = 100; // Send a heartbeat every x ms
-const int kListeningPort = 10010;
-const int kPingUpdateRate = 5; // Update the currentPing every x pings
+const int kPingUpdateRate = 10; // Update the currentPing every x pings
 const int kPingDumpRate = 100; // Every x pings, reset the sum
+const int kPingReportRate = 10; // Print out all of the current pings every x seconds
 
 class MeshNode {
 public:
@@ -68,6 +70,7 @@ public:
     unsigned short getListeningPort();
 
     void listAllHandlers();
+
     void startHandlingMessages();
     void stopHandlingMessages();
     bool isHandlingMessages();
@@ -75,6 +78,10 @@ public:
     void startSendingHeartbeats();
     void stopSendingHeartbeats();
     bool isSendingHeartbeats();
+
+    void startReportingPings();
+    void stopReportingPings();
+    bool isReportingPings();
 
     bool connectTo(sf::IpAddress address, unsigned short port);
     unsigned int numberOfConnections();
@@ -115,12 +122,17 @@ private:
 
     std::map<std::string, std::unique_ptr<Connection>> connections;
 
-    // Heartbeat/ping tools
+    // Heartbeat
     void heartbeat(sf::IpAddress address, unsigned short port);
     void startHeartbeat(sf::IpAddress address, unsigned short port);
 
-    std::vector<std::thread> heartbeatThreads;
     bool sendingHeartbeats;
+
+    // Pings
+    void reportPings();
+
+    std::thread pingReportThread;
+    bool reportingPings;
     
     // Handlers
     void setupHandlers();

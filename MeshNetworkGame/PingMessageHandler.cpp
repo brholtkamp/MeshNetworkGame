@@ -3,7 +3,7 @@
 PingMessageHandler::PingMessageHandler() {
     messageTypes.push_back("ping");
     messageTypes.push_back("pong");
-    messageTypes.push_back("pongresult");
+    messageTypes.push_back("result");
 }
 
 void PingMessageHandler::handleMessage(sf::IpAddress fromAddress, unsigned short fromPort, std::string type, Json::Value message) {
@@ -14,7 +14,7 @@ void PingMessageHandler::handleMessage(sf::IpAddress fromAddress, unsigned short
         }
     } else if (type == "pong") {
         node->updatePing(fromAddress, fromPort, node->pong(fromAddress, fromPort, message));
-    } else if (type == "pongresult") {
+    } else if (type == "result") {
         node->updatePing(fromAddress, fromPort, message["result"].asString());
     }
 }

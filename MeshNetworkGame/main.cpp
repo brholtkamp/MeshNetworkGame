@@ -19,11 +19,10 @@ int main(int argc, char *argv[]) {
         std::cout << "Please enter a port to use: "<< std::endl;
         std::cin >> port;
             
-        if (node->connectTo(address, port)) {
-            node->outputConnections();
+        if (!node->connectTo(address, port)) {
+            Log << "Failed to connect to " << address << ":" << port << std::endl;
         }
     }
-    
 
     return 0;
 }
