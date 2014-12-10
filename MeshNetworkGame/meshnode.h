@@ -14,6 +14,7 @@
 #include <thread>
 #include <functional>
 #include <memory>
+#include <chrono>
 
 #include "Log.h"
 #include "PingMessageHandler.h"
@@ -36,6 +37,8 @@ struct Connection {
     unsigned long long sumOfPings;
     unsigned long long countOfPings;
     unsigned long long currentPing;
+    std::thread heartbeatThread;
+    std::chrono::system_clock::time_point lastHeartbeat;
 };
 
 struct Message {
@@ -46,8 +49,10 @@ struct Message {
 };
 
 const int kListeningTimeout = 2500;
+const int kHeartbeatTimeout = 2500;
+const int kHeartbeatRate = 1000;
 const int kListeningPort = 10010;
-const int kPingUpdateRate = 300;
+const int kPingUpdateRate = 10;
 
 class MeshNode {
 public:
@@ -64,6 +69,10 @@ public:
     void stopHandlingMessages();
     bool isHandlingMessages();
 
+    void startSendingHeartbeats();
+    void stopSendingHeartbeats();
+    bool isSendingHeartbeats();
+
     bool connectTo(sf::IpAddress address, unsigned short port);
     unsigned int numberOfConnections();
 
@@ -76,16 +85,8 @@ public:
     void broadcast(std::string type, Json::Value message);
     void outputConnections();
 private:
-    void handleIncomingMessages();
-    void handleOutgoingMessages();
+    // Listener
     void listen();
-
-    void setupHandlers();
-    bool registerMessageHandler(std::unique_ptr<MessageHandler> handler);
-
-    bool addConnection(sf::IpAddress address, unsigned short port, std::unique_ptr<sf::TcpSocket> socket);
-    bool connectionExists(sf::IpAddress address, unsigned short port);
-    bool closeConnection(sf::IpAddress address, unsigned short port);
 
     std::thread listeningThread;
     ConnectionInfo listenerInfo;
@@ -93,16 +94,35 @@ private:
     std::unique_ptr<sf::TcpListener> listener;
     bool listening;
 
-    std::string makeUsernameString(sf::IpAddress address, unsigned short port);
+    // Handlers
+    void handleIncomingMessages();
+    void handleOutgoingMessages();
+
     std::thread incomingMessagesThread;
     std::thread outgoingMessagesThread;
     std::deque<Message> outgoingMessages;
     std::deque<Message> incomingMessages;
     bool handlingMessages;
 
-    std::map<std::string, std::vector<std::unique_ptr<Connection>>::iterator> connections;
-    std::vector<std::unique_ptr<Connection>> connectionReferences;
+    // Connections
+    std::string makeUsernameString(sf::IpAddress address, unsigned short port);
+    bool addConnection(sf::IpAddress address, unsigned short port, std::unique_ptr<sf::TcpSocket> socket);
+    bool connectionExists(sf::IpAddress address, unsigned short port);
+    bool closeConnection(sf::IpAddress address, unsigned short port);
+
+    std::map<std::string, std::unique_ptr<Connection>> connections;
+
+    // Heartbeat/ping tools
+    void heartbeat(sf::IpAddress address, unsigned short port);
+    void startHeartbeat(sf::IpAddress address, unsigned short port);
+
+    std::vector<std::thread> heartbeatThreads;
+    bool sendingHeartbeats;
     
+    // Handlers
+    void setupHandlers();
+    bool registerMessageHandler(std::unique_ptr<MessageHandler> handler);
+
     std::map<std::string, std::vector<std::unique_ptr<MessageHandler>>::iterator> handlers;
     std::vector<std::unique_ptr<MessageHandler>> handlerReferences;
 
