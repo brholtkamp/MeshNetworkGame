@@ -1,16 +1,15 @@
 #ifndef __MESSAGE_HANDLER_H__
 #define __MESSAGE_HANDLER_H__
-#include <string>
+#include <SFML/Network.hpp>
+#include <json/json.h>
+#include <vector>
 #include <memory>
-
-#include "MeshNode.h"
 
 class MeshNode;
 
 class MessageHandler {
 public:
-    ~MessageHandler() { node.release(); }
-    virtual void handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type) = 0;
+    virtual void handleMessage(sf::IpAddress fromAddress, unsigned short fromPort, std::string type, Json::Value message) = 0;
     void setMeshNode(std::unique_ptr<MeshNode> _node) { node = std::move(_node); }
     std::vector<std::string> getMessageTypes() { return messageTypes; }
 protected:

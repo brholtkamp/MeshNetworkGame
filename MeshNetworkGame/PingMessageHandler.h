@@ -1,17 +1,14 @@
 #ifndef __PING_MESSAGE_HANDLER_H__
 #define __PING_MESSAGE_HANDLER_H__
 #include "MessageHandler.h"
-#include "Log.h"
+#include "MeshNode.h"
 
-const int kPingUpdateRate = 10;
+class MessageHandler;
 
 class PingMessageHandler : public MessageHandler {
 public:
     PingMessageHandler();
 
-    void handleMessage(Json::Value message, sf::IpAddress fromAddress, unsigned short fromPort, std::string type);
-
-    long long sumPings;
-    long long numPings;
+    void handleMessage(sf::IpAddress fromAddress, unsigned short fromPort, std::string type, Json::Value message);
 };
 #endif // __PING_MESSAGE_HANDLER_H__

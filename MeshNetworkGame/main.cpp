@@ -4,17 +4,11 @@
 #include <chrono>
 
 #include "MeshNode.h"
-#include "PingMessageHandler.h"
-#include "SystemMessageHandler.h"
 
 int main(int argc, char *argv[]) {
-    std::ios_base::sync_with_stdio(false);
-    std::string username = "brian";
     std::unique_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
     std::unique_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
-    std::unique_ptr<MeshNode> node(new MeshNode(10010, username));
-    node->registerMessageHandler(std::move(pingHandler));
-    node->registerMessageHandler(std::move(systemHandler));
+    std::unique_ptr<MeshNode> node(new MeshNode(10010));
 
     char mode;
     std::cout << "Listen mode? (y/n)" << std::endl;
@@ -32,7 +26,7 @@ int main(int argc, char *argv[]) {
         if (node->connectTo(address, port)) {
             while (node->numberOfConnections() > 0) {
                 node->ping(address, port);
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
         } 
     } else {
