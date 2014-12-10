@@ -42,14 +42,14 @@ void MeshNode::listen() {
                 std::unique_ptr<sf::TcpSocket> newClient = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket()); 
                 if (listener->accept(*newClient) == sf::Socket::Done) {
                     // Connection established 
-                    Log("Connection attempt from " + newClient->getRemoteAddress().toString() + ":" + std::to_string(newClient->getRemotePort()));
+                    Log << "Connection attempt from " << newClient->getRemoteAddress() << ":" << newClient->getRemotePort() << std::endl;
                     sf::IpAddress address = newClient->getRemoteAddress();
                     unsigned short port = newClient->getRemotePort();
                     if (!addConnection(address, port, std::move(newClient))) {
-                        Log("Failed to store connection");
+                        Log << "Failed to store connection" << std::endl;
                     }
                 } else {
-                    Log("Client failed to connect");
+                    Log << "Client failed to connect" << std::endl;
                 }
             } else {
                 if (!connections.empty()) {
@@ -66,7 +66,7 @@ void MeshNode::listen() {
                                         Json::Reader reader;
                                         Json::Value message;
                                         if (!reader.parse(buffer, message)) {
-                                            Log("Failed to parse JSON message");
+                                            Log << "Failed to parse JSON message" << std::endl;
                                             break;
                                         } 
 
@@ -84,17 +84,17 @@ void MeshNode::listen() {
                                             }
                                         }
 
-                                        incomingMessages.push_back(incomingMessage);
+                                        incomingMessages.pushBack(incomingMessage);
                                     }
                                     break;
                                 case sf::Socket::Disconnected:
                                 case sf::Socket::Error:
-                                    Log("Connection disconnection or error from " + connection->second->user.address.toString() + ":" + std::to_string(connection->second->user.port));
+                                    Log << "Connection disconnection or error from " << connection->second->user.address << ":" << connection->second->user.port << std::endl;
                                     closeConnection(connection->second->user.address, connection->second->user.port);
                                     connectionClosed = true;
                                     break;
                                 default:
-                                    Log("Connection failure from " + connection->second->user.address.toString() + ":" + std::to_string(connection->second->user.port));
+                                    Log << "Connection failure from " << connection->second->user.address << ":" << connection->second->user.port << std::endl;
                                     closeConnection(connection->second->user.address, connection->second->user.port);
                                     connectionClosed = true;
                                     break;
@@ -113,14 +113,10 @@ void MeshNode::listen() {
 void MeshNode::handleIncomingMessages() {
     while (handlingMessages) {
         if (incomingMessages.size() != 0) {
-            Message message = incomingMessages.front();
-
-            //Log("Got " + message.type);
+            Message message = incomingMessages.getNext();
 
             std::string username = makeUsernameString(message.destination.address, message.destination.port);
             handlers[message.type]->get()->handleMessage(connections[username]->user.address, connections[username]->user.port, message.type, message.contents);
-
-            incomingMessages.pop_front();
         }
     }
 
@@ -130,9 +126,7 @@ void MeshNode::handleIncomingMessages() {
 void MeshNode::handleOutgoingMessages() {
     while (handlingMessages) {
         if (outgoingMessages.size() != 0) {
-            Message message = outgoingMessages.front();
-
-            //Log("Sending " + message.type);
+            Message message = outgoingMessages.getNext();
 
             sf::Packet packet;
             Json::Value buffer;
@@ -152,10 +146,8 @@ void MeshNode::handleOutgoingMessages() {
             
             std::string username = makeUsernameString(message.destination.address, message.destination.port);
             if (connections[username]->socket->send(packet) != sf::Socket::Done) {
-                Log("Failed to send message: " + buffer.toStyledString());
+                Log << "Failed to send message: " << buffer.toStyledString() << std::endl;
             }
-
-            outgoingMessages.pop_front();
         }
     }
 
@@ -166,11 +158,11 @@ void MeshNode::heartbeat(sf::IpAddress address, unsigned short port) {
     std::string username = makeUsernameString(address, port);
     while (sendingHeartbeats) {
         if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - connections[username]->lastHeartbeat).count() > kHeartbeatTimeout) {
-            Log("Heartbeat timeout on " + username);
+            Log << "Heartbeat timeout on " << username << std::endl;
             return;
         } 
         ping(address, port);
-        Log(std::to_string(connections[username]->currentPing));
+        Log << connections[username]->currentPing << "ms" <<std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(kHeartbeatRate));
     }
@@ -240,11 +232,11 @@ bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
         if (addConnection(address, port, std::move(socket))) {
             return true;
         } else {
-            Log("Failed to store connection to " + address.toString() + ":" + std::to_string(port));
+            Log << "Failed to store connection to " << address << ":" << port << std::endl;
             return false;
         }
     } else {
-        Log("Failed to connect to " + address.toString() + ":" + std::to_string(port));
+        Log << "Failed to connect to " << address << ":" << port << std::endl;
         return true;
     }
 }
@@ -254,20 +246,21 @@ void MeshNode::ping(sf::IpAddress address, unsigned short port) {
     message["ping"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
     if (!sendMessage(address, port, "ping", message)) {
-        Log("Failed to ping" + address.toString() + ":" + std::to_string(port));
+        Log << "Failed to ping" << address << ":" << port << std::endl;
     }
 }
 
-unsigned int MeshNode::pong(sf::IpAddress address, unsigned short port, Json::Value message) {
+std::string MeshNode::pong(sf::IpAddress address, unsigned short port, Json::Value message) {
     message["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
     message["result"] = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
     if (!sendMessage(address, port, "pongresult", message)) {
-        Log("Failed to send result to destination");
+        Log << "Failed to send result to destination" << std::endl;
     }
-    return message["result"].asUInt();
+    return message["result"].asString();
 }
 
-void MeshNode::updatePing(sf::IpAddress address, unsigned short port, unsigned long long ping) {
+void MeshNode::updatePing(sf::IpAddress address, unsigned short port, std::string newPing) {
+    unsigned long long ping = std::stoll(newPing);
     std::string username = makeUsernameString(address, port);
 
     connections[username]->sumOfPings += ping;
@@ -275,6 +268,10 @@ void MeshNode::updatePing(sf::IpAddress address, unsigned short port, unsigned l
     connections[username]->lastHeartbeat = std::chrono::system_clock::now();
     if (connections[username]->countOfPings % kPingUpdateRate == 0) {
         connections[username]->currentPing = static_cast<unsigned long long>(static_cast<double>(connections[username]->sumOfPings) / static_cast<double>(connections[username]->countOfPings));
+    }
+    if (connections[username]->countOfPings % kPingDumpRate == 0) {
+        connections[username]->sumOfPings = 0;
+        connections[username]->countOfPings = 0;
     }
 }
 
@@ -302,12 +299,12 @@ bool MeshNode::sendMessage(sf::IpAddress address, unsigned short port, std::stri
             outgoingMessage.pathway = connections[username]->pathway;
         }
 
-        outgoingMessages.push_back(outgoingMessage);
+        outgoingMessages.pushBack(outgoingMessage);
 
         return true;
     }
 
-    Log("Cannot find connection to " + address.toString() + ":" + std::to_string(port) + " to send a message");
+    Log << "Cannot find connection to " << address << ":" << port << " to send a message" << std::endl;
     return false;
 }
 
@@ -322,14 +319,14 @@ void MeshNode::broadcast(std::string type, Json::Value message) {
             outgoingMessage.pathway = connection.second->pathway;
         }
 
-        outgoingMessages.push_back(outgoingMessage);
+        outgoingMessages.pushBack(outgoingMessage);
     }
 }
 
 bool MeshNode::registerMessageHandler(std::unique_ptr<MessageHandler> handler) {
     for (auto& handle : handlerReferences) {
         if (handle->getMessageTypes() == handler->getMessageTypes()) {
-            Log("Handler already exists");
+            Log << "Handler already exists" << std::endl;
             return false;
         }
     }
@@ -348,16 +345,16 @@ bool MeshNode::registerMessageHandler(std::unique_ptr<MessageHandler> handler) {
 }
 
 void MeshNode::listAllHandlers() {
-    Log("Outputting all handles: ");
+    Log << "Outputting all handles: " << std::endl;
     for (auto handle : handlers) {
-        Log(handle.first);
+        Log << handle.first << std::endl;
     }
 }
 
 bool MeshNode::addConnection(sf::IpAddress address, unsigned short port, std::unique_ptr<sf::TcpSocket> socket) {
     if (!connections.empty()) {
         if (connectionExists(address, port)) {
-            Log("Connection to " + address.toString() + ":" + std::to_string(port) + " already exists");
+            Log << "Connection to " << address << ":" << port << " already exists" << std::endl;
             return false;
         }
     }
@@ -374,7 +371,7 @@ bool MeshNode::addConnection(sf::IpAddress address, unsigned short port, std::un
     newConnection->lastHeartbeat = std::chrono::system_clock::now();
     connections[makeUsernameString(address, port)] = std::move(newConnection);
     startHeartbeat(address, port);
-    Log("Connection to " + address.toString() + ":" + std::to_string(port)+ " successful!");
+    Log << "Connection to " << address << ":" << port << " successful!" << std::endl;
     outputConnections();
     return true;
 }
@@ -382,7 +379,7 @@ bool MeshNode::addConnection(sf::IpAddress address, unsigned short port, std::un
 bool MeshNode::connectionExists(sf::IpAddress address, unsigned short port) {
     if (!connections.empty()) {
         std::string username = makeUsernameString(address, port);
-        if (connections.find(username) != connections.end()) {
+        if (connections.find(username) != connections.end() && connections[username] != nullptr) {
             if (connections[username]->socket->getRemoteAddress() != sf::IpAddress::None) {
                 return true;
             } else {
@@ -403,14 +400,14 @@ bool MeshNode::closeConnection(sf::IpAddress address, unsigned short port) {
         } 
     }
 
-    Log ("Connection to " + address.toString() + ":" + std::to_string(port) + " does not exist or timed out");
+    Log << "Connection to " << address << ":" << port << " does not exist or timed out" << std::endl;
     return false;
 }
 
 void MeshNode::outputConnections() {
-    Log("All connections: ");
+    Log << "All connections:" << std::endl;
     for (auto& connection : connections) {
-        Log(connection.second->user.address.toString() + ":" + std::to_string(connection.second->user.port) + " = " + std::to_string(connection.second->currentPing) + "ms");
+        Log << connection.second->user.address << ":" << connection.second->user.port << " = " << connection.second->currentPing << "ms" << std::endl;
     }
 }
 
@@ -419,5 +416,7 @@ unsigned int MeshNode::numberOfConnections() {
 }
 
 std::string MeshNode::makeUsernameString(sf::IpAddress address, unsigned short port) {
-    return address.toString() + ":" + std::to_string(port);
+    std::stringstream buffer;
+    buffer << address << ":" << port;
+    return buffer.str();
 }

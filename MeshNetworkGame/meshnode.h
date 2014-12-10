@@ -21,6 +21,8 @@
 #include "SystemMessageHandler.h"
 #include "MessageQueue.h"
 
+#define Log std::cout
+
 class MessageHandler;
 class PingMessageHandler;
 class SystemMessageHandler;
@@ -48,11 +50,12 @@ struct Message {
     std::vector<ConnectionInfo> pathway;
 };
 
-const int kListeningTimeout = 2500;
-const int kHeartbeatTimeout = 2500;
-const int kHeartbeatRate = 1000;
+const int kListeningTimeout = 2500; // Cancel a socket if it exceeds x ms
+const int kHeartbeatTimeout = 2500; // Cancel a connection if it exceeds x ms
+const int kHeartbeatRate = 100; // Send a heartbeat every x ms
 const int kListeningPort = 10010;
-const int kPingUpdateRate = 10;
+const int kPingUpdateRate = 5; // Update the currentPing every x pings
+const int kPingDumpRate = 100; // Every x pings, reset the sum
 
 class MeshNode {
 public:
@@ -77,8 +80,8 @@ public:
     unsigned int numberOfConnections();
 
     void ping(sf::IpAddress address, unsigned short port);
-    unsigned int pong(sf::IpAddress address, unsigned short port, Json::Value message);
-    void updatePing(sf::IpAddress address, unsigned short port, unsigned long long newPing);
+    std::string pong(sf::IpAddress address, unsigned short port, Json::Value message);
+    void updatePing(sf::IpAddress address, unsigned short port, std::string newPing);
 
     bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
     bool optimizeFor(sf::IpAddress address, unsigned short port);
@@ -100,8 +103,8 @@ private:
 
     std::thread incomingMessagesThread;
     std::thread outgoingMessagesThread;
-    std::deque<Message> outgoingMessages;
-    std::deque<Message> incomingMessages;
+    MessageQueue<Message> outgoingMessages;
+    MessageQueue<Message> incomingMessages;
     bool handlingMessages;
 
     // Connections

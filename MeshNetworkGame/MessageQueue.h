@@ -10,8 +10,8 @@ public:
     MessageQueue();
     ~MessageQueue();
 
-    inline void push_back(T message);
-    inline T get_next();
+    inline void pushBack(T message);
+    inline T getNext();
     inline unsigned int size();
 
 private:
@@ -30,14 +30,14 @@ MessageQueue<T>::~MessageQueue() {
 }
 
 template <class T>
-void MessageQueue<T>::push_back(T message) {
+void MessageQueue<T>::pushBack(T message) {
     lock.lock();
         items.push_back(message);
     lock.unlock();
 }
 
 template <class T>
-T MessageQueue<T>::get_next() {
+T MessageQueue<T>::getNext() {
     lock.lock();
         T item = items.front();
         items.pop_front();

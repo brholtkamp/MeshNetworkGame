@@ -20,6 +20,7 @@
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>v110</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>false</WholeProgramOptimization>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -75,7 +76,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\json\jsoncpp.cpp" />
-    <ClCompile Include="Log.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MeshNode.cpp" />
     <ClCompile Include="PingMessageHandler.cpp" />
@@ -84,10 +84,9 @@
   <ItemGroup>
     <ClInclude Include="..\json\json-forwards.h" />
     <ClInclude Include="..\json\json.h" />
-    <ClInclude Include="MessageQueue.h" />
     <ClInclude Include="MessageHandler.h" />
-    <ClInclude Include="Log.h" />
     <ClInclude Include="MeshNode.h" />
+    <ClInclude Include="MessageQueue.h" />
     <ClInclude Include="PingMessageHandler.h" />
     <ClInclude Include="SystemMessageHandler.h" />
   </ItemGroup>

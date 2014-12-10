@@ -10,11 +10,11 @@ void PingMessageHandler::handleMessage(sf::IpAddress fromAddress, unsigned short
     if (type == "ping") {
         message["pong"] = "pong";
         if(!node->sendMessage(fromAddress, fromPort, "pong", message)) {
-            Log("Failed to send back ping");
+            Log << "Failed to send back ping" << std::endl;
         }
     } else if (type == "pong") {
         node->updatePing(fromAddress, fromPort, node->pong(fromAddress, fromPort, message));
     } else if (type == "pongresult") {
-        node->updatePing(fromAddress, fromPort, message["result"].asUInt64());
+        node->updatePing(fromAddress, fromPort, message["result"].asString());
     }
 }

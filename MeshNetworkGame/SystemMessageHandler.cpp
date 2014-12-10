@@ -7,5 +7,5 @@ SystemMessageHandler::SystemMessageHandler() {
 }
 
 void SystemMessageHandler::handleMessage(sf::IpAddress fromAddress, unsigned short fromPort, std::string type, Json::Value message) {
-    Log(message.toStyledString());
+    Log << message.toStyledString() << std::endl;
 }
