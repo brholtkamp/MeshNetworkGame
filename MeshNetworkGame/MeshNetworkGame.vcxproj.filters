@@ -30,12 +30,6 @@
     <ClCompile Include="MeshNode.cpp">
       <Filter>Networking</Filter>
     </ClCompile>
-    <ClCompile Include="PingMessageHandler.cpp">
-      <Filter>Networking\MessageHandlers</Filter>
-    </ClCompile>
-    <ClCompile Include="SystemMessageHandler.cpp">
-      <Filter>Networking\MessageHandlers</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\json\json.h">
@@ -47,13 +41,7 @@
     <ClInclude Include="MeshNode.h">
       <Filter>Networking</Filter>
     </ClInclude>
-    <ClInclude Include="SystemMessageHandler.h">
-      <Filter>Networking\MessageHandlers</Filter>
-    </ClInclude>
     <ClInclude Include="MessageHandler.h">
-      <Filter>Networking\MessageHandlers</Filter>
-    </ClInclude>
-    <ClInclude Include="PingMessageHandler.h">
       <Filter>Networking\MessageHandlers</Filter>
     </ClInclude>
     <ClInclude Include="MessageQueue.h">

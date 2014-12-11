@@ -78,8 +78,6 @@
     <ClCompile Include="..\json\jsoncpp.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MeshNode.cpp" />
-    <ClCompile Include="PingMessageHandler.cpp" />
-    <ClCompile Include="SystemMessageHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\json\json-forwards.h" />
@@ -87,8 +85,6 @@
     <ClInclude Include="MessageHandler.h" />
     <ClInclude Include="MeshNode.h" />
     <ClInclude Include="MessageQueue.h" />
-    <ClInclude Include="PingMessageHandler.h" />
-    <ClInclude Include="SystemMessageHandler.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

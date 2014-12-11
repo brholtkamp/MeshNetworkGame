@@ -3,145 +3,125 @@
 #include <SFML/Network.hpp>
 #include <SFML/System.hpp>
 #include <json/json.h>
+
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <iomanip>
-#include <list>
+
+#include <vector>
 #include <deque>
 #include <map>
-#include <ctime>
-#include <sstream>
+
 #include <thread>
-#include <functional>
+#include <mutex>
 #include <memory>
+#include <functional>
 #include <chrono>
 
 #include "Log.h"
-#include "PingMessageHandler.h"
-#include "SystemMessageHandler.h"
-#include "MessageQueue.h"
 
-#define Output std::cout
-#define Log std::cerr
+#define out std::cout
+#define log std::cerr
 
 class MessageHandler;
-class PingMessageHandler;
-class SystemMessageHandler;
 
-struct ConnectionInfo {
-    sf::IpAddress address;
-    unsigned short port;
+struct PingInfo {
+    unsigned long long sum;
+    unsigned long long count;
+    unsigned long long currentPing;
+    std::chrono::system_clock::time_point lastPing;
 };
 
 struct Connection {
     std::unique_ptr<sf::TcpSocket> socket;
-    ConnectionInfo user;
-    std::vector<ConnectionInfo> pathway;
-    unsigned long long sumOfPings;
-    unsigned long long countOfPings;
-    unsigned long long currentPing;
+    sf::IpAddress address;
+    unsigned short personalPort;
+    unsigned short listeningPort;
     std::thread heartbeatThread;
-    std::chrono::system_clock::time_point lastHeartbeat;
+    std::thread requestingThread;
+    bool sendingHeartbeats;
+    bool requestingConnections;
 };
 
 struct Message {
-    ConnectionInfo destination;
     Json::Value contents;
     std::string type;
-    std::vector<ConnectionInfo> pathway;
+    bool broadcast;
+    std::vector<std::string> pathway;
+
+    std::string toString() {
+        std::stringstream buffer;
+        buffer << "From: " << pathway[0] << std::endl;
+        buffer << "To: " << pathway[pathway.size() - 1] << std::endl;
+        buffer << "Broadcast? " << broadcast << std::endl;
+        buffer << "Pathway: " << std::endl;
+        for (auto path : pathway) {
+            buffer << "\t" << path << std::endl;
+        }
+        buffer << "Contents: " << std::endl;
+        buffer << contents.toStyledString() << std::endl;
+        return buffer.str();
+    }
 };
 
 const int kListeningPort = 10010;  // Default listening port
-const int kListeningTimeout = 2500; // Cancel a socket if it exceeds x ms
-const int kHeartbeatTimeout = 2500; // Cancel a connection if it exceeds x ms
+const std::string kDefaultName = "test"; // Default name
+const int kConnectionTimeout = 2000; // Cancel a connection if it exceeds x ms
 const int kHeartbeatRate = 100; // Send a heartbeat every x ms
-const int kPingUpdateRate = 10; // Update the currentPing every x pings
+const int kPingReportRate = 250; // Print out the ping for a connection every x ms
+const int kPingUpdateRate = 10; // Compute the average ping every x ms
 const int kPingDumpRate = 100; // Every x pings, reset the sum
-const int kPingReportRate = 10; // Print out all of the current pings every x seconds
+const int kUpdateNetworkRate = 10000; // Every x pings, ask other nodes for more nodes
 
 class MeshNode {
 public:
-    MeshNode(unsigned short _listening_port = kListeningPort);
+    MeshNode(unsigned short _listening_port = kListeningPort, std::string name = kDefaultName);
     ~MeshNode();
 
-    void startListening();
-    void stopListening();
-    bool isListening();
-    unsigned short getListeningPort();
-
-    void listAllHandlers();
-
-    void startHandlingMessages();
-    void stopHandlingMessages();
-    bool isHandlingMessages();
-
-    void startSendingHeartbeats();
-    void stopSendingHeartbeats();
-    bool isSendingHeartbeats();
-
-    void startReportingPings();
-    void stopReportingPings();
-    bool isReportingPings();
-
     bool connectTo(sf::IpAddress address, unsigned short port);
-    unsigned int numberOfConnections();
-
-    void ping(sf::IpAddress address, unsigned short port);
-    std::string pong(sf::IpAddress address, unsigned short port, Json::Value message);
-    void updatePing(sf::IpAddress address, unsigned short port, std::string newPing);
-
-    bool sendMessage(sf::IpAddress address, unsigned short port, std::string type, Json::Value message);
-    bool optimizeFor(sf::IpAddress address, unsigned short port);
     void broadcast(std::string type, Json::Value message);
-    void outputConnections();
+    void listConnections();
 private:
-    // Listener
-    void listen();
+    // Local info
+    sf::IpAddress localAddress;
+    unsigned short listeningPort;
+    std::string name;
+    std::map<std::string, std::unique_ptr<Connection>> connections;
+    std::map<std::string, std::unique_ptr<PingInfo>> pingInfo;
 
-    std::thread listeningThread;
-    ConnectionInfo listenerInfo;
-    std::unique_ptr<sf::SocketSelector> selector;
-    std::unique_ptr<sf::TcpListener> listener;
+    // Listening and handling new clients
+    void listen();
+    bool submitInfo(std::unique_ptr<sf::TcpSocket> user);
+    bool addConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value userInfo);
+    bool connectionExists(std::string user);
+    void removeConnection(std::string user);
+
+    std::thread listenThread;
+    std::unique_ptr<sf::TcpListener> listener; // Socket listener
+    std::unique_ptr<sf::SocketSelector> selector; // Socket multiplexer
     bool listening;
 
-    // Handlers
-    void handleIncomingMessages();
-    void handleOutgoingMessages();
+    // Heart beat
+    void heartbeat(std::string name);
+    void ping(std::string name);
+    void pong(std::string name, Json::Value message);
+    void updatePing(std::string name, Json::Value message);
 
-    std::thread incomingMessagesThread;
-    std::thread outgoingMessagesThread;
-    MessageQueue<Message> outgoingMessages;
-    MessageQueue<Message> incomingMessages;
-    bool handlingMessages;
+    // Message handling
+    void forwardMessage(Message message);
+    void handleMessage(Message message);
+    void handleContent(Message message);
+    void sendMessage(std::string user, std::string type, Json::Value message);
 
-    // Connections
-    std::string makeUsernameString(sf::IpAddress address, unsigned short port);
-    bool addConnection(sf::IpAddress address, unsigned short port, std::unique_ptr<sf::TcpSocket> socket);
-    bool connectionExists(sf::IpAddress address, unsigned short port);
-    bool closeConnection(sf::IpAddress address, unsigned short port);
+    // Connection exploring
+    void searchConnections(std::string user);
+    void sendConnections(std::string user);
+    void receiveConnections(std::string user, Json::Value message);
+    void requestConnections(std::string user, std::vector<std::string> requestedUsers);
+    void sendConnections(std::string user, std::vector<std::string> requestedUsers);
 
-    std::map<std::string, std::unique_ptr<Connection>> connections;
-
-    // Heartbeat
-    void heartbeat(sf::IpAddress address, unsigned short port);
-    void startHeartbeat(sf::IpAddress address, unsigned short port);
-
-    bool sendingHeartbeats;
-
-    // Pings
-    void reportPings();
-
-    std::thread pingReportThread;
-    bool reportingPings;
-    
-    // Handlers
-    void setupHandlers();
-    bool registerMessageHandler(std::unique_ptr<MessageHandler> handler);
-
-    std::map<std::string, std::vector<std::unique_ptr<MessageHandler>>::iterator> handlers;
-    std::vector<std::unique_ptr<MessageHandler>> handlerReferences;
-
-    std::unique_ptr<PingMessageHandler> pingHandler;
-    std::unique_ptr<SystemMessageHandler> systemHandler;
+    // Route handling
+    std::map<std::string, std::vector<std::string>> routingTable;
 };
 #endif // __MESHNODE_H__

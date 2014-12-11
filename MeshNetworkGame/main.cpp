@@ -6,21 +6,43 @@
 #include "MeshNode.h"
 
 int main(int argc, char *argv[]) {
-    std::unique_ptr<PingMessageHandler> pingHandler(new PingMessageHandler());
-    std::unique_ptr<SystemMessageHandler> systemHandler(new SystemMessageHandler());
-    std::unique_ptr<MeshNode> node(new MeshNode(10010));
+    std::string name;
 
-    while (true) {
-        std::string address;
-        unsigned short port;
+    std::cout << "Please give your node a name" << std::endl;
+    std::cin >> name;
+
+    std::unique_ptr<MeshNode> node(new MeshNode(10010, name));
+
+    std::string address;
+    unsigned short port;
+
+    std::cout << "Please enter a host to connect to: " << std::endl;
+    std::cin >> address;
      
-        std::cout << "Please enter a host to connect to: " << std::endl;
-        std::cin >> address;
+    while (address != "quit") {
         std::cout << "Please enter a port to use: "<< std::endl;
         std::cin >> port;
-            
+
         if (!node->connectTo(address, port)) {
-            Log << "Failed to connect to " << address << ":" << port << std::endl;
+                log << "Failed to connect to " << address << ":" << port << std::endl;
+        }
+
+        std::cout << "Please enter a host to connect to: " << std::endl;
+        std::cin >> address;
+    }
+
+    std::string foo;
+
+    while (foo != "quit") {
+        std::cout << "Type something to say" << std::endl;
+        std::cin >> foo;
+
+        if (foo == "info") {
+            node->listConnections();
+        } else {
+            Json::Value message;
+            message["test"] = foo;
+            node->broadcast("test", message);
         }
     }
 
