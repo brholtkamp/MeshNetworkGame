@@ -21,7 +21,8 @@
 
 #include "Log.h"
 
-#define out std::cout
+#define out std::cout 
+#define in  std::cin
 #define log std::cerr
 
 class MessageHandler;
@@ -38,10 +39,12 @@ struct Connection {
     sf::IpAddress address;
     unsigned short personalPort;
     unsigned short listeningPort;
+    PingInfo ping;
+    unsigned int lag;
+
+    bool timedOut;
     std::thread heartbeatThread;
-    std::thread requestingThread;
-    bool sendingHeartbeats;
-    bool requestingConnections;
+    std::thread connectionRequestThread;
 };
 
 struct Message {
@@ -80,6 +83,7 @@ public:
     ~MeshNode();
 
     bool connectTo(sf::IpAddress address, unsigned short port);
+    void setLag(std::string user, unsigned int lag);
     void broadcast(std::string type, Json::Value message);
     void listConnections();
 private:
@@ -88,40 +92,45 @@ private:
     unsigned short listeningPort;
     std::string name;
     std::map<std::string, std::unique_ptr<Connection>> connections;
-    std::map<std::string, std::unique_ptr<PingInfo>> pingInfo;
 
     // Listening and handling new clients
     void listen();
-    bool submitInfo(std::unique_ptr<sf::TcpSocket> user);
-    bool addConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value userInfo);
+    bool addConnection(std::unique_ptr<sf::TcpSocket> user);
+    bool craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value info);
     bool connectionExists(std::string user);
-    void removeConnection(std::string user);
 
-    std::thread listenThread;
+    std::thread listenerThread;
     std::unique_ptr<sf::TcpListener> listener; // Socket listener
-    std::unique_ptr<sf::SocketSelector> selector; // Socket multiplexer
+    std::unique_ptr<sf::SocketSelector> selector;
     bool listening;
 
     // Heart beat
-    void heartbeat(std::string name);
+    void heartbeat(std::string);
     void ping(std::string name);
     void pong(std::string name, Json::Value message);
     void updatePing(std::string name, Json::Value message);
 
     // Message handling
-    void forwardMessage(Message message);
-    void handleMessage(Message message);
+    void handleMessage(Message message, std::string sender);
     void handleContent(Message message);
-    void sendMessage(std::string user, std::string type, Json::Value message);
+    void sendMessage(std::string user, Message message);
+    Message craftMessage(std::string user, std::string type, Json::Value contents);
+
+    std::thread heartbeatThread;
+    bool sendingHeartbeats;
 
     // Connection exploring
     void searchConnections(std::string user);
     void sendConnections(std::string user);
     void receiveConnections(std::string user, Json::Value message);
     void requestConnections(std::string user, std::vector<std::string> requestedUsers);
-    void sendConnections(std::string user, std::vector<std::string> requestedUsers);
+    void sendRequestedConnections(std::string user, std::vector<std::string> requestedUsers);
 
     // Route handling
+    bool isInRoute(std::string newUser, std::string routeToCheck);
+    void requestRoute(std::string user, std::string route);
+    void sendRoute(std::string user, std::string route);
+    void receiveRoute(std::string user, Json::Value message);
     std::map<std::string, std::vector<std::string>> routingTable;
 };
 #endif // __MESHNODE_H__

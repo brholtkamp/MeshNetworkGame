@@ -16,29 +16,39 @@ int main(int argc, char *argv[]) {
     std::string address;
     unsigned short port;
 
-    std::cout << "Please enter a host to connect to: " << std::endl;
-    std::cin >> address;
+    out << "Please enter a host to connect to: " << std::endl;
+    in >> address;
      
     while (address != "quit") {
-        std::cout << "Please enter a port to use: "<< std::endl;
-        std::cin >> port;
+        out << "Please enter a port to use: "<< std::endl;
+        in >> port;
 
         if (!node->connectTo(address, port)) {
                 log << "Failed to connect to " << address << ":" << port << std::endl;
         }
 
-        std::cout << "Please enter a host to connect to: " << std::endl;
-        std::cin >> address;
+        out << "Please enter a host to connect to (or quit to move into the menu): " << std::endl;
+        in >> address;
     }
 
     std::string foo;
 
     while (foo != "quit") {
-        std::cout << "Type something to say" << std::endl;
-        std::cin >> foo;
+        out << "Type something to do" << std::endl;
+        in >> foo;
 
         if (foo == "info") {
             node->listConnections();
+        } else if (foo == "lag") {
+            std::string user;
+            unsigned int lag;
+
+            out << "What user do you wish to add/remove lag?";
+            in >> user;
+            out << "What amount of lag?";
+            in >> lag;
+
+            node->setLag(user, lag);
         } else {
             Json::Value message;
             message["test"] = foo;

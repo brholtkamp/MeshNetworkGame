@@ -1,99 +1,103 @@
 #include "MeshNode.h"
 
 MeshNode::MeshNode(unsigned short _listeningPort, std::string _name): listeningPort(_listeningPort), name(_name) {
-    listener = std::unique_ptr<sf::TcpListener>(new sf::TcpListener());
-    selector = std::unique_ptr<sf::SocketSelector>(new sf::SocketSelector());
+    listener = std::unique_ptr<sf::TcpListener>(new sf::TcpListener);
+    selector = std::unique_ptr<sf::SocketSelector>(new sf::SocketSelector);
+
+    listener->setBlocking(true);
 
     while (listener->listen(listeningPort) == sf::TcpListener::Error) {
         listeningPort++;
     }
     localAddress = sf::IpAddress::getPublicAddress();
-    listener->setBlocking(false);
-
     log << "Listening on " << localAddress << ":" << listeningPort << std::endl;
 
     selector->add(*listener);
 
     listening = true;
-    listenThread = std::thread(&MeshNode::listen, this);
+    listenerThread = std::thread(&MeshNode::listen, this);
 }
 
 MeshNode::~MeshNode() {
     listening = false;
-    listenThread.join();
+    listenerThread.join();
 
-    for (auto connection = connections.begin(); connection != connections.end() && connection->second != nullptr; connection++) {
-        /* Threads */
-        connection->second->sendingHeartbeats = false;
-        connection->second->requestingConnections = false;
+    for (auto connection = connections.begin(); connection != connections.end(); ++connection) {
+        connection->second->timedOut = true;
         connection->second->heartbeatThread.join();
-        connection->second->requestingThread.join();
+        connection->second->connectionRequestThread.join();
     }
 }
 
 void MeshNode::listen() {
     while (listening) {
-        if (selector->wait(sf::milliseconds(kConnectionTimeout))) {
+        if (selector->wait(sf::milliseconds(10))) {
             if (selector->isReady(*listener)) {
-                std::unique_ptr<sf::TcpSocket> user = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket()); 
-                if (listener->accept(*user) == sf::Socket::Done) {
-                    sf::IpAddress address = user->getRemoteAddress();
-                    unsigned short port = user->getRemotePort();
-
-                    log << "Connection attempt from " << address << ":" << port << std::endl;
-
-                    if (!submitInfo(std::move(user))) {
-                        log << "Connection attempt failed from " << address << ":" << port << std::endl;
-                    } 
-                } else {
-                    log << "User failed to connect" << std::endl;
+                std::unique_ptr<sf::TcpSocket> client = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket());
+                if (listener->accept(*client) == sf::Socket::Done) {
+                    log << "Got new connection attempt from " << client->getRemoteAddress() << ":" << client->getRemotePort() << std::endl;
+                    if (!addConnection(std::move(client))) {
+                        log << "Failed to get new connection" << std::endl;    
+                    }
                 }
             } else {
                 if (!connections.empty()) {
-                    for (auto connection = connections.begin(); connection != connections.end(); connection++) {
+                    auto end = connections.end();
+                    for (auto connection = connections.begin(); connection != end && !connections.empty(); ++connection) {
                         if (selector->isReady(*connection->second->socket)) {
                             sf::Packet packet;
-                            std::string buffer;
                             sf::Socket::Status status = connection->second->socket->receive(packet);
-                            
-                            switch (status) {
-                                case sf::Socket::Done:
-                                    if (packet >> buffer) {
-                                        Json::Reader reader;
-                                        Json::Value message;
-                                        if (!reader.parse(buffer, message)) {
-                                            log << "Failed to parse JSON message" << std::endl;
-                                            break;
-                                        }
 
-                                        Message incomingMessage;
-                                        incomingMessage.contents = message["contents"];
-                                        incomingMessage.type = message["type"].asString();
-                                        incomingMessage.broadcast = message.isMember("broadcast");
-                                        std::vector<std::string> pathway;
-                                        for (auto path : message["pathway"]) {
-                                            pathway.push_back(path.asString());
-                                        }
-                                        incomingMessage.pathway = pathway;
+                            if (status == sf::Socket::Done) {
+                                std::string buffer;
+                                if (packet >> buffer) {
+                                    Json::Reader reader;
+                                    Json::Value message;
+                                    reader.parse(buffer, message);
 
-                                        handleMessage(incomingMessage);
+                                    Message incomingMessage;
+                                    incomingMessage.contents = message["contents"];
+                                    incomingMessage.type = message["type"].asString();
+                                    incomingMessage.broadcast = message.isMember("broadcast");
+                                    std::vector<std::string> pathway;
+                                    for (auto path : message["pathway"]) {
+                                        pathway.push_back(path.asString());
                                     }
+                                    incomingMessage.pathway = pathway;
+
+                                    handleMessage(incomingMessage, connection->first);
+                                } else {
+                                    log << "Unable to parse message" << std::endl;
+                                }
+                            } else {
+                                log << connection->first << " has disconnected" << std::endl;
+                                selector->remove(*connection->second->socket);
+                                connection->second->timedOut = true;
+                                connection->second->heartbeatThread.join();
+                                connection->second->connectionRequestThread.join();
+                                connections.erase(connection);
+                                if (!connections.empty()) {
+                                    connection = connections.begin();
+                                    end = connections.end();
+                                } else {
                                     break;
-                                case sf::Socket::Disconnected:
-                                    log << "Connection to " << connection->first << " was disconnected" << std::endl;
-                                    removeConnection(connection->first);
-                                    connection = connections.end();
-                                    break;
-                                case sf::Socket::Error:
-                                default:
-                                    log << "Connection to " << connection->first << " had an error and timed out" << std::endl;
-                                    removeConnection(connection->first);
-                                    connection = connections.end();
-                                    break;
+                                }
+                            }
+                        } else if (connection->second->timedOut) {
+                            log << connection->first << " has timed out" << std::endl;
+                            selector->remove(*connection->second->socket);
+                            connection->second->heartbeatThread.join();
+                            connection->second->connectionRequestThread.join();
+                            connections.erase(connection);
+                            if (!connections.empty()) {
+                                connection = connections.begin();
+                                end = connections.end();
+                            } else {
+                                break;
                             }
                         }
                     }
-                } 
+                }
             }
         }
     }
@@ -103,10 +107,10 @@ void MeshNode::listen() {
 }
 
 void MeshNode::heartbeat(std::string user) {
-    while (connections[user]->sendingHeartbeats) {
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - pingInfo[user]->lastPing).count() % kConnectionTimeout == 0 && pingInfo[user]->currentPing != 0) {
+    while (!connections[user]->timedOut) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - connections[user]->ping.lastPing).count() % kConnectionTimeout == 0 && connections[user]->ping.currentPing != 0) {
             log << user << " timed out on heartbeats" << std::endl;
-            removeConnection(user);
+            connections[user]->timedOut = true;
             return;
         }
 
@@ -118,7 +122,7 @@ void MeshNode::heartbeat(std::string user) {
 }
 
 void MeshNode::searchConnections(std::string user) {
-    while (connections[user]->requestingConnections) {
+    while (!connections[user]->timedOut) {
         sendConnections(user);
         std::this_thread::sleep_for(std::chrono::milliseconds(kUpdateNetworkRate));
     }
@@ -130,33 +134,34 @@ void MeshNode::ping(std::string user) {
     Json::Value message;
     message["ping"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-    sendMessage(user, "ping", message);
+    Message outgoingMessage = craftMessage(user, "ping", message);
+    sendMessage(user, outgoingMessage);
 }
 
 void MeshNode::pong(std::string user, Json::Value message) {
-    sendMessage(user, "pong", message);
+    Message outgoingMessage = craftMessage(user, "pong", message);
+    sendMessage(user, outgoingMessage);
 }
 
 void MeshNode::updatePing(std::string user, Json::Value message) {
-     message["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-     unsigned long long newPing = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
-     pingInfo[user]->count++;
-     pingInfo[user]->sum += newPing;
-     pingInfo[user]->lastPing = std::chrono::system_clock::now();
+    message["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+    unsigned long long newPing = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
+    connections[user]->ping.count++;
+    connections[user]->ping.sum += newPing;
+    connections[user]->ping.lastPing = std::chrono::system_clock::now();
 
-    if (pingInfo[user]->count % kPingUpdateRate == 0) {
-        pingInfo[user]->currentPing = static_cast<unsigned long long>(static_cast<double>(pingInfo[user]->sum) / static_cast<double>(pingInfo[user]->count));
+    if (connections[user]->ping.count % kPingUpdateRate == 0) {
+        connections[user]->ping.currentPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count)) + connections[user]->lag;
     }
 
-     if (pingInfo[user]->count % kPingDumpRate == 0) {
-        pingInfo[user]->count = 0;
-        pingInfo[user]->sum = 0;
-     }
+    if (connections[user]->ping.count % kPingDumpRate == 0) {
+        connections[user]->ping.count = 0;
+        connections[user]->ping.sum = 0;
+    }
 }
 
-bool MeshNode::submitInfo(std::unique_ptr<sf::TcpSocket> user) {
-    user->setBlocking(false);
-    sf::Packet response;
+bool MeshNode::addConnection(std::unique_ptr<sf::TcpSocket> user) {
+    sf::Packet request;
 
     Json::Value message;
     message["type"] = "info";
@@ -164,11 +169,11 @@ bool MeshNode::submitInfo(std::unique_ptr<sf::TcpSocket> user) {
     message["listeningPort"] = listeningPort;
     message["name"] = name;
 
-    response << message.toStyledString();
+    request << message.toStyledString();
 
-    if (user->send(response) == sf::Socket::Done) {
+    if (user->send(request) == sf::Socket::Done) {
         sf::Packet response;
-        
+
         if (user->receive(response) == sf::Socket::Done) {
             std::string buffer;
             Json::Reader reader;
@@ -178,143 +183,128 @@ bool MeshNode::submitInfo(std::unique_ptr<sf::TcpSocket> user) {
 
             reader.parse(buffer, info);
 
-            if (info["type"] == "info") {
-                addConnection(std::move(user), info);
+            if (craftConnection(std::move(user), info)) {
+                return true;
             }
-
-            return true;
         }
     }
 
-    log << "Failed to send info to a connecting user" << std::endl;
     return false;
 }
 
-bool MeshNode::addConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value userInfo) {
-    std::string name = userInfo["name"].asString();
-    if (connections.find(name) != connections.end() || connections[name] == nullptr) {
+bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value info) {
+    std::string clientName = info["name"].asString();
+    if (info["type"].asString() == "info" && !connectionExists(clientName)) {
+        connections[clientName] = std::unique_ptr<Connection>(new Connection());
+        connections[clientName]->address = sf::IpAddress(info["address"].asString());
+        connections[clientName]->listeningPort = static_cast<unsigned short>(info["listeningPort"].asUInt());
+        connections[clientName]->personalPort = user->getLocalPort();
+        connections[clientName]->socket = std::move(user);
+        connections[clientName]->ping.count = 0;
+        connections[clientName]->ping.sum = 0;
+        connections[clientName]->ping.currentPing = 0;
+        connections[clientName]->ping.lastPing = std::chrono::system_clock::now();
+        connections[clientName]->lag = 0;
+        connections[clientName]->timedOut = false;
+        selector->add(*connections[clientName]->socket);
+        routingTable[clientName].push_back(clientName);
 
-        connections[name] = std::unique_ptr<Connection>(new Connection());
-        connections[name]->address = sf::IpAddress(userInfo["address"].asString());
-        connections[name]->listeningPort = static_cast<unsigned short>(userInfo["listeningPort"].asUInt());
-        connections[name]->personalPort = user->getLocalPort();
-        connections[name]->socket = std::move(user);
-        connections[name]->socket->setBlocking(false);
-        selector->add(*connections[name]->socket);
-        pingInfo[name] = std::unique_ptr<PingInfo>(new PingInfo());
-        pingInfo[name]->sum = 0;
-        pingInfo[name]->count = 0;
-        pingInfo[name]->currentPing = 0;
-        pingInfo[name]->lastPing = std::chrono::system_clock::now();
-        routingTable[name].push_back(name);
+        connections[clientName]->heartbeatThread = std::move(std::thread(&MeshNode::heartbeat, this, clientName));
+        connections[clientName]->connectionRequestThread = std::move(std::thread(&MeshNode::searchConnections, this, clientName));
 
-        /* Threads */
-        connections[name]->sendingHeartbeats = true;
-        connections[name]->requestingConnections = true;
-        connections[name]->heartbeatThread = std::move(std::thread(&MeshNode::heartbeat, this, name));
-        connections[name]->requestingThread = std::move(std::thread(&MeshNode::searchConnections, this, name));
-
-        log << name << " is now connected to this node from " << connections[name]->address << ":" << connections[name]->listeningPort << " on " << connections[name]->personalPort << std::endl;
-
+        log << "Connection to " << clientName << " on " << connections[clientName]->address << ":" << connections[clientName]->listeningPort << " established on " << connections[clientName]->personalPort << std::endl;
         return true;
     }
 
-    log << name << " is already connected to this node" << std::endl;
     return false;
 }
 
 bool MeshNode::connectionExists(std::string user) {
-     if (connections.find(user) != connections.end()) {
-         return true;
-     }
+    if (connections.find(user) != connections.end()) {
+        return true;
+    }
 
-     return false;
- }
-
-void MeshNode::removeConnection(std::string user) {
-     if (connections.find(user) != connections.end()) {
-        /* Threads */
-        connections[user]->sendingHeartbeats = false;
-        connections[user]->heartbeatThread.join();
-        connections[user]->requestingConnections = false;
-        connections[user]->requestingThread.join();
-        connections.erase(user);
-        pingInfo.erase(user);
-        return;
-     }
-
-     log << user << " was not in the list of connections to be removed" << std::endl;
- }
+    return false;
+}
 
 bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
-     std::unique_ptr<sf::TcpSocket> user = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket());
-     if (address != localAddress || port != listeningPort) {
-         if (user->connect(address, port, sf::milliseconds(kConnectionTimeout)) == sf::Socket::Done) {
-            if (submitInfo(std::move(user))) {
-                return true;
+    std::unique_ptr<sf::TcpSocket> user = std::unique_ptr<sf::TcpSocket>(new sf::TcpSocket()); 
+    if (address != localAddress || port != listeningPort) {
+        if (user->connect(address, port, sf::milliseconds(kConnectionTimeout)) == sf::Socket::Done) {
+            if (!addConnection(std::move(user))) {
+                log << "Failed to connect to user from " << address << ":" << port << std::endl;
             }
-         }
-     }
-
-     return false;
- }
-
-void MeshNode::sendMessage(std::string user, std::string type, Json::Value message) {
-    if (connectionExists(user)) {
-        Message outgoingMessage;
-        outgoingMessage.contents = message;
-        outgoingMessage.pathway.push_back(name);
-        for (auto path : routingTable[user]) {
-            outgoingMessage.pathway.push_back(path);
+            return true;
         }
-        outgoingMessage.type = type;
-        outgoingMessage.broadcast = message.isMember("broadcast");
-        
+    }
+
+    return false;
+}
+
+void MeshNode::setLag(std::string user, unsigned int lag) {
+    connections[user]->lag = lag;
+}
+
+Message MeshNode::craftMessage(std::string user, std::string type, Json::Value contents) {
+    Message outgoingMessage;
+    outgoingMessage.contents = contents;
+    outgoingMessage.pathway.push_back(name);
+    for (auto path : routingTable[user]) {
+        outgoingMessage.pathway.push_back(path);
+    }
+    outgoingMessage.type = type;
+    outgoingMessage.broadcast = contents.isMember("broadcast");
+    
+    return outgoingMessage;
+}
+
+void MeshNode::sendMessage(std::string user, Message message) {
+    if (connectionExists(user)) {
+        sf::Packet packet;
+
         Json::Value finalMessage;
-        finalMessage["contents"] = outgoingMessage.contents;
-        finalMessage["type"] = outgoingMessage.type;
-        if (outgoingMessage.broadcast) {
+        finalMessage["contents"] = message.contents;
+        finalMessage["type"] = message.type;
+        if (message.broadcast) {
             finalMessage["broadcast"] = "broadcast";
         }
-        for (auto path : outgoingMessage.pathway) {
+        for (auto path : message.pathway) {
             finalMessage["pathway"].append(path);
         }
-        
-        sf::Packet packet;
+
         packet << finalMessage.toStyledString();
 
         if (connectionExists(user)) {
             if (connections[user]->socket->send(packet) != sf::Socket::Done) {
                 log << "Failed to send a message to " << user << ":" << std::endl << finalMessage.toStyledString() << std::endl;
+                connections[user]->timedOut = true;
             }
         }
         return;
+    } else {
+        log << "Connection to " << user << " does not exist to send message: " << std::endl << message.toString() << std::endl;
     }
-
-    log << "Connection to " << user << " does not exist to send " << type << " message" << std::endl;
- }
+}
 
 void MeshNode::broadcast(std::string type, Json::Value message) {
      message["broadcast"] = "broadcast";
      for (auto connection = connections.begin(); connection != connections.end(); connection++) {
-         sendMessage(connection->first, type, message);
+         Message outgoingMessage = craftMessage(connection->first, type, message);
+         sendMessage(connection->first, outgoingMessage);
      }
  }
 
-void MeshNode::handleMessage(Message message) {
-    // First to receive this message or it's only to me
-    handleContent(message);
-    /*
-    if (message.pathway.size() == 1 || message.history.size() == 0) {
-        // Handle message
-    } else if (message.pathway.size() == (message.history.size() - 1)) {
-        // Handle message
-    } else if (message.broadcast) {
-        // Handle message
-        // Broadcast to all not in history
+void MeshNode::handleMessage(Message message, std::string sender) {
+    if (message.pathway[message.pathway.size() - 1] == name) {
+        handleContent(message);
     } else {
-        // Forward message
-    }*/
+        for (auto user = message.pathway.begin(); user != message.pathway.end(); user++) {
+            if (*user == sender) {
+                user++;
+                sendMessage(*user, message);
+            }
+        }
+    }
 }
 
 void MeshNode::handleContent(Message message) {
@@ -324,12 +314,12 @@ void MeshNode::handleContent(Message message) {
         updatePing(message.pathway[0], message.contents);
     } else if (message.type == "sendConnections") {
         receiveConnections(message.pathway[0], message.contents);
-    } else if (message.type == "requestConnection") {
+    } else if (message.type == "requestConnections") {
         std::vector<std::string> users;
         for (auto user : message.contents["users"]) {
             users.push_back(user.asString());
         }
-        sendConnections(message.pathway[0], std::move(users));
+        sendRequestedConnections(message.pathway[0], std::move(users));
     } else if (message.type == "responseConnections") {
         std::vector<sf::IpAddress> addresses;
         std::vector<unsigned short> ports;
@@ -353,17 +343,36 @@ void MeshNode::handleContent(Message message) {
 void MeshNode::sendConnections(std::string user) {
     Json::Value message;
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
-        message["users"].append(connection->first);
+        Json::Value user;
+        user["name"] = connection->first;
+        user["ping"] = connection->second->ping.currentPing;
+        message["users"].append(user);
     }
-    
-    sendMessage(user, "sendConnections", message);
+
+    Message outgoingMessage = craftMessage(user, "sendConnections", message);
+    sendMessage(user, outgoingMessage);
 }
 
 void MeshNode::receiveConnections(std::string user, Json::Value message) {
     std::vector<std::string> users;
+
     for (auto unknownUser : message["users"]) {
-        if (!connectionExists(unknownUser.asString()) && unknownUser.asString() != name) {
-            users.push_back(unknownUser.asString());
+        log << message.toStyledString() << std::endl;
+        std::string newUser = unknownUser["name"].asString();
+        if (!connectionExists(newUser) && newUser != name) {
+            log << "Requesting connection to " << newUser << std::endl;
+            users.push_back(newUser);
+        }
+        
+        if (connectionExists(newUser) && isInRoute(newUser, user)) {
+            if (connections[newUser]->ping.currentPing > unknownUser["ping"].asUInt()) {
+                log << "Optimizing route to " << newUser << " via " << user << " with their " << unknownUser["ping"].asUInt() << "ms connection!" << std::endl;
+                routingTable[user].push_back(newUser);
+                log << "New route to " << newUser << std::endl;
+                for (auto route : routingTable[newUser]) {
+                    log << route << std::endl;
+                }
+            }
         }
     }
 
@@ -378,23 +387,37 @@ void MeshNode::requestConnections(std::string user, std::vector<std::string> req
         message["users"].append(requestedUser);
     }
 
-    sendMessage(user, "requestConnection", message);
+    Message outgoingMessage = craftMessage(user, "requestConnections", message);
+    sendMessage(user, outgoingMessage);
 }
 
-void MeshNode::sendConnections(std::string user, std::vector<std::string> requestedUsers) {
+void MeshNode::sendRequestedConnections(std::string user, std::vector<std::string> requestedUsers) {
     Json::Value message;
     for (auto requestedUser : requestedUsers) {
-        Json::Value newUser;
-        newUser["address"] = connections[requestedUser]->address.toString();
-        newUser["port"] = connections[requestedUser]->listeningPort;
-        message["users"].append(newUser);
+        if (connectionExists(requestedUser)) {
+            Json::Value newUser;
+            newUser["address"] = connections[requestedUser]->address.toString();
+            newUser["port"] = connections[requestedUser]->listeningPort;
+            message["users"].append(newUser);
+        }
     }
 
-    sendMessage(user, "responseConnections", message);
+    Message outgoingMessage = craftMessage(user, "responseConnections", message);
+    sendMessage(user, outgoingMessage);
+}
+
+bool MeshNode::isInRoute(std::string newUser, std::string routeToCheck) {
+    for (auto route : routingTable[routeToCheck]) {
+        if (route == newUser) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void MeshNode::listConnections() {
-     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
-         log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << std::endl;
-     }
- }
+    for (auto connection = connections.begin(); connection != connections.end(); connection++) {
+        log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << " with " << connection->second->ping.currentPing << "ms" << std::endl;
+    }
+}
