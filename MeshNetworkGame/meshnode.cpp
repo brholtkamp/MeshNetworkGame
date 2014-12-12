@@ -58,14 +58,13 @@ void MeshNode::listen() {
                                     Message incomingMessage;
                                     incomingMessage.contents = message["contents"];
                                     incomingMessage.type = message["type"].asString();
-                                    incomingMessage.broadcast = message.isMember("broadcast");
                                     std::vector<std::string> pathway;
                                     for (auto path : message["pathway"]) {
                                         pathway.push_back(path.asString());
                                     }
                                     incomingMessage.pathway = pathway;
 
-                                    handleMessage(incomingMessage, connection->first);
+                                    handleMessage(incomingMessage);
                                 } else {
                                     log << "Unable to parse message" << std::endl;
                                 }
@@ -134,12 +133,12 @@ void MeshNode::ping(std::string user) {
     Json::Value message;
     message["ping"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
 
-    Message outgoingMessage = craftMessage(user, "ping", message);
+    Message outgoingMessage = craftMessage(user, "ping", message, true);
     sendMessage(user, outgoingMessage);
 }
 
 void MeshNode::pong(std::string user, Json::Value message) {
-    Message outgoingMessage = craftMessage(user, "pong", message);
+    Message outgoingMessage = craftMessage(user, "pong", message, true);
     sendMessage(user, outgoingMessage);
 }
 
@@ -200,6 +199,7 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
         connections[clientName]->listeningPort = static_cast<unsigned short>(info["listeningPort"].asUInt());
         connections[clientName]->personalPort = user->getLocalPort();
         connections[clientName]->socket = std::move(user);
+        connections[clientName]->socket->setBlocking(false);
         connections[clientName]->ping.count = 0;
         connections[clientName]->ping.sum = 0;
         connections[clientName]->ping.currentPing = 0;
@@ -245,15 +245,19 @@ void MeshNode::setLag(std::string user, unsigned int lag) {
     connections[user]->lag = lag;
 }
 
-Message MeshNode::craftMessage(std::string user, std::string type, Json::Value contents) {
+Message MeshNode::craftMessage(std::string user, std::string type, Json::Value contents, bool directRoute) {
     Message outgoingMessage;
     outgoingMessage.contents = contents;
     outgoingMessage.pathway.push_back(name);
-    for (auto path : routingTable[user]) {
-        outgoingMessage.pathway.push_back(path);
+    if (directRoute) {
+        outgoingMessage.pathway.push_back(name);
+        outgoingMessage.pathway.push_back(user);
+    } else {
+        for (auto path : routingTable[user]) {
+            outgoingMessage.pathway.push_back(path);
+        }
     }
     outgoingMessage.type = type;
-    outgoingMessage.broadcast = contents.isMember("broadcast");
     
     return outgoingMessage;
 }
@@ -265,9 +269,6 @@ void MeshNode::sendMessage(std::string user, Message message) {
         Json::Value finalMessage;
         finalMessage["contents"] = message.contents;
         finalMessage["type"] = message.type;
-        if (message.broadcast) {
-            finalMessage["broadcast"] = "broadcast";
-        }
         for (auto path : message.pathway) {
             finalMessage["pathway"].append(path);
         }
@@ -286,24 +287,32 @@ void MeshNode::sendMessage(std::string user, Message message) {
     }
 }
 
+void MeshNode::forwardMessage(Message message) {
+    std::string nextUser;
+    for (auto user = message.pathway.begin(); user != message.pathway.end(); user++) {
+        if (*user == name) {
+            nextUser = *(++user);
+        }
+    }
+
+    sendMessage(nextUser, message);
+}
+
 void MeshNode::broadcast(std::string type, Json::Value message) {
-     message["broadcast"] = "broadcast";
      for (auto connection = connections.begin(); connection != connections.end(); connection++) {
          Message outgoingMessage = craftMessage(connection->first, type, message);
          sendMessage(connection->first, outgoingMessage);
      }
  }
 
-void MeshNode::handleMessage(Message message, std::string sender) {
+void MeshNode::handleMessage(Message message) {
     if (message.pathway[message.pathway.size() - 1] == name) {
         handleContent(message);
     } else {
-        for (auto user = message.pathway.begin(); user != message.pathway.end(); user++) {
-            if (*user == sender) {
-                user++;
-                sendMessage(*user, message);
-            }
+        if (!isSystemMessage(message)) {
+            log << "Forwarding " << std::endl << message.toString() << std::endl;
         }
+        forwardMessage(message);
     }
 }
 
@@ -338,7 +347,19 @@ void MeshNode::handleContent(Message message) {
     } else {
         log << message.toString() << std::endl;
     }
-} 
+}
+
+bool MeshNode::isSystemMessage(Message message) {
+    if (message.type == "ping" || 
+        message.type == "pong" ||
+        message.type == "sendConnections" ||
+        message.type == "requestConnections" ||
+        message.type == "responseConnections") {
+        return true;
+    } else {
+        return false;
+    }
+}
 
 void MeshNode::sendConnections(std::string user) {
     Json::Value message;
@@ -357,14 +378,13 @@ void MeshNode::receiveConnections(std::string user, Json::Value message) {
     std::vector<std::string> users;
 
     for (auto unknownUser : message["users"]) {
-        log << message.toStyledString() << std::endl;
         std::string newUser = unknownUser["name"].asString();
         if (!connectionExists(newUser) && newUser != name) {
             log << "Requesting connection to " << newUser << std::endl;
             users.push_back(newUser);
         }
         
-        if (connectionExists(newUser) && isInRoute(newUser, user)) {
+        if (connectionExists(newUser) && !isInRoute(newUser, user)) {
             if (connections[newUser]->ping.currentPing > unknownUser["ping"].asUInt()) {
                 log << "Optimizing route to " << newUser << " via " << user << " with their " << unknownUser["ping"].asUInt() << "ms connection!" << std::endl;
                 routingTable[user].push_back(newUser);
@@ -419,5 +439,11 @@ bool MeshNode::isInRoute(std::string newUser, std::string routeToCheck) {
 void MeshNode::listConnections() {
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
         log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << " with " << connection->second->ping.currentPing << "ms" << std::endl;
+        if (routingTable[connection->first].size() > 1) {
+            log << "Route to " << connection->first << ":" << std::endl;
+            for (auto route : routingTable[connection->first]) {
+                log << route << std::endl;
+            }
+        }
     }
 }

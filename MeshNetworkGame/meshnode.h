@@ -50,14 +50,12 @@ struct Connection {
 struct Message {
     Json::Value contents;
     std::string type;
-    bool broadcast;
     std::vector<std::string> pathway;
 
     std::string toString() {
         std::stringstream buffer;
         buffer << "From: " << pathway[0] << std::endl;
         buffer << "To: " << pathway[pathway.size() - 1] << std::endl;
-        buffer << "Broadcast? " << broadcast << std::endl;
         buffer << "Pathway: " << std::endl;
         for (auto path : pathway) {
             buffer << "\t" << path << std::endl;
@@ -111,10 +109,12 @@ private:
     void updatePing(std::string name, Json::Value message);
 
     // Message handling
-    void handleMessage(Message message, std::string sender);
+    void handleMessage(Message message);
     void handleContent(Message message);
     void sendMessage(std::string user, Message message);
-    Message craftMessage(std::string user, std::string type, Json::Value contents);
+    void forwardMessage(Message message);
+    bool isSystemMessage(Message message);
+    Message craftMessage(std::string user, std::string type, Json::Value contents, bool directRoute = false);
 
     std::thread heartbeatThread;
     bool sendingHeartbeats;
