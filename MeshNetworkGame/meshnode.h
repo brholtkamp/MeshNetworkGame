@@ -19,18 +19,15 @@
 #include <functional>
 #include <chrono>
 
-#include "Log.h"
-
 #define out std::cout 
 #define in  std::cin
 #define log std::cerr
-
-class MessageHandler;
 
 struct PingInfo {
     unsigned long long sum;
     unsigned long long count;
     unsigned long long currentPing;
+    std::vector<std::string> optimalRoute;
     std::chrono::system_clock::time_point lastPing;
 };
 
@@ -45,35 +42,50 @@ struct Connection {
     bool timedOut;
     std::thread heartbeatThread;
     std::thread connectionRequestThread;
+    std::thread optimizationThread;
 };
 
 struct Message {
     Json::Value contents;
     std::string type;
-    std::vector<std::string> pathway;
+    std::vector<std::string> route;
 
     std::string toString() {
         std::stringstream buffer;
-        buffer << "From: " << pathway[0] << std::endl;
-        buffer << "To: " << pathway[pathway.size() - 1] << std::endl;
-        buffer << "Pathway: " << std::endl;
-        for (auto path : pathway) {
-            buffer << "\t" << path << std::endl;
+        if (!route.empty()) { 
+            buffer << "From: " << route.front() << std::endl;
+            buffer << "To: " << route.back() << std::endl;
+            buffer << "Route: " << std::endl;
+            for (auto node = route.begin(); node != route.end(); ++node) {
+                if (*node != route.back()) {
+                    buffer << *node << " -> ";
+                } else {
+                    buffer << *node << std::endl;
+                }
+            }
         }
         buffer << "Contents: " << std::endl;
         buffer << contents.toStyledString() << std::endl;
         return buffer.str();
     }
+
+    Message& operator=(const Message& other) {
+        contents = other.contents;
+        type = other.type;
+        route = other.route;
+    }
 };
 
 const int kListeningPort = 10010;  // Default listening port
+const int kListenerWaitTime = 10; // Wait x ms between messages
 const std::string kDefaultName = "test"; // Default name
 const int kConnectionTimeout = 2000; // Cancel a connection if it exceeds x ms
 const int kHeartbeatRate = 100; // Send a heartbeat every x ms
 const int kPingReportRate = 250; // Print out the ping for a connection every x ms
 const int kPingUpdateRate = 10; // Compute the average ping every x ms
 const int kPingDumpRate = 100; // Every x pings, reset the sum
-const int kUpdateNetworkRate = 10000; // Every x pings, ask other nodes for more nodes
+const int kUpdateNetworkRate = 1000; // Every x pings, ask other nodes for more nodes
+const int kRouteOptimizationRate = 2000; // Attempt to optimize the route after x ms
 
 class MeshNode {
 public:
@@ -90,11 +102,13 @@ private:
     unsigned short listeningPort;
     std::string name;
     std::map<std::string, std::unique_ptr<Connection>> connections;
+    std::chrono::system_clock::time_point mapsInvalidated;
 
     // Listening and handling new clients
     void listen();
     bool addConnection(std::unique_ptr<sf::TcpSocket> user);
     bool craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value info);
+    void removeConnection(std::string user);
     bool connectionExists(std::string user);
 
     std::thread listenerThread;
@@ -111,10 +125,10 @@ private:
     // Message handling
     void handleMessage(Message message);
     void handleContent(Message message);
-    void sendMessage(std::string user, Message message);
+    void sendMessage(std::string userToSendTo, Message message);
     void forwardMessage(Message message);
     bool isSystemMessage(Message message);
-    Message craftMessage(std::string user, std::string type, Json::Value contents, bool directRoute = false);
+    Message craftMessage(std::string userToSendTo, std::string type, Json::Value contents, bool directRoute = false);
 
     std::thread heartbeatThread;
     bool sendingHeartbeats;
@@ -124,13 +138,16 @@ private:
     void sendConnections(std::string user);
     void receiveConnections(std::string user, Json::Value message);
     void requestConnections(std::string user, std::vector<std::string> requestedUsers);
+    void parseConnections(Json::Value message);
     void sendRequestedConnections(std::string user, std::vector<std::string> requestedUsers);
 
     // Route handling
+    void optimize(std::string user);
     bool isInRoute(std::string newUser, std::string routeToCheck);
-    void requestRoute(std::string user, std::string route);
-    void sendRoute(std::string user, std::string route);
-    void receiveRoute(std::string user, Json::Value message);
+    void purgeFromRoutes(std::string user);
+    void beginOptimization(std::string userToBeOptimized, std::string userToSendThrough);
+    void forwardOptimization(Message message);
+    void returnOptimization(Message message);
     std::map<std::string, std::vector<std::string>> routingTable;
 };
 #endif // __MESHNODE_H__

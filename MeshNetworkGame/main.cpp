@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
     std::string foo;
 
     while (foo != "quit") {
-        out << "Type something to do" << std::endl;
+        out << "Type something to do " << std::endl;
         in >> foo;
 
         if (foo == "info") {
@@ -43,9 +43,9 @@ int main(int argc, char *argv[]) {
             std::string user;
             unsigned int lag;
 
-            out << "What user do you wish to add/remove lag?";
+            out << "What user do you wish to add/remove lag? ";
             in >> user;
-            out << "What amount of lag?";
+            out << "What amount of lag? ";
             in >> lag;
 
             node->setLag(user, lag);
