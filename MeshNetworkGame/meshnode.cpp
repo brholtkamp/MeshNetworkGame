@@ -17,7 +17,8 @@ MeshNode::MeshNode(unsigned short _listeningPort, std::string _name): listeningP
     selector->add(*listener);
 
     // Set the start time to keep our map valid
-    mapsInvalidated = std::chrono::system_clock::now();
+    connectionsInvalidated = std::chrono::system_clock::now();
+    routingInvalidated = std::chrono::system_clock::now();
 
     listening = true;
     listenerThread = std::thread(&MeshNode::listen, this);
@@ -70,11 +71,11 @@ void MeshNode::listen() {
                                     Message incomingMessage;
                                     incomingMessage.contents = message["contents"];
                                     incomingMessage.type = message["type"].asString();
-                                    std::vector<std::string> pathway;
+                                    std::vector<std::string> route;
                                     for (auto node : message["route"]) {
-                                        pathway.push_back(node.asString());
+                                        route.push_back(node.asString());
                                     }
-                                    incomingMessage.route = pathway;
+                                    incomingMessage.route = route;
 
                                     handleMessage(incomingMessage);
                                 } else {
@@ -142,10 +143,10 @@ void MeshNode::optimize(std::string user) {
         // Iterate through all available connections that aren't to the user in question
         for (auto connection = connections.begin(); connection != connections.end(); connection++) {
             // Check the validity of the map so that we don't have a dereferenced iterator
-            if (beganOptimizing > mapsInvalidated && connection->first != user) {
+            if (beganOptimizing > connectionsInvalidated && beganOptimizing > routingInvalidated && connection->first != user) {
                 beginOptimization(user, connection->first);
             // The map is invalid, we gotta break out before increments
-            } else if (beganOptimizing < mapsInvalidated) { 
+            } else if (beganOptimizing < connectionsInvalidated || beganOptimizing < routingInvalidated) { 
                 break;
             }
         }
@@ -172,14 +173,23 @@ void MeshNode::pong(std::string user, Json::Value message) {
 void MeshNode::updatePing(std::string user, Json::Value message) {
     message["pong"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
     // Parse the contents of the ping/pong message and determine the time elapsed from this machine
-    unsigned long long newPing = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
+    unsigned long long thisPing = std::stoll(message["pong"].asString()) - std::stoll(message["ping"].asString());
     connections[user]->ping.count++;
-    connections[user]->ping.sum += newPing;
+    connections[user]->ping.sum += thisPing;
     connections[user]->ping.lastPing = std::chrono::system_clock::now();
 
     if (connections[user]->ping.count % kPingUpdateRate == 0) {
         // Cast the long longs to doubles to remove integer division before storage
-        connections[user]->ping.currentPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count));
+        unsigned long long newPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count));
+        connections[user]->ping.currentPing = newPing;
+        if (connections[user]->ping.currentPing < connections[user]->ping.optimumPing) {
+            connections[user]->ping.optimumPing = connections[user]->ping.currentPing;
+            log << "Direct route is more efficient with " << newPing << "ms" << std::endl;
+            std::vector<std::string> newRoute;
+            newRoute.push_back(name);
+            newRoute.push_back(user);
+            routingTable[user] = newRoute;
+        }
     }
 
     if (connections[user]->ping.count % kPingDumpRate == 0) {
@@ -243,6 +253,7 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
         connections[clientName]->ping.count = 0;
         connections[clientName]->ping.sum = 0;
         connections[clientName]->ping.currentPing = 0;
+        connections[clientName]->ping.optimumPing = 9999;
         connections[clientName]->ping.lastPing = std::chrono::system_clock::now();
         connections[clientName]->lag = 0;
         connections[clientName]->timedOut = false;
@@ -266,7 +277,8 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
 
 void MeshNode::removeConnection(std::string user) {
     // Mark the map invalid for any other thread using an iterator can respond accordingly
-    mapsInvalidated = std::chrono::system_clock::now();
+    connectionsInvalidated = std::chrono::system_clock::now();
+    routingInvalidated = std::chrono::system_clock::now();
 
     // Remove from the multiplexer
     selector->remove(*connections[user]->socket);
@@ -310,6 +322,7 @@ bool MeshNode::connectTo(sf::IpAddress address, unsigned short port) {
 void MeshNode::setLag(std::string user, unsigned int lag) {
     if (user != name) {
         connections[user]->lag = lag;
+        connections[user]->ping.optimumPing = 9999;
     }
 }
 
@@ -318,6 +331,7 @@ Message MeshNode::craftMessage(std::string user, std::string type, Json::Value c
     // Add in the contents
     outgoingMessage.contents = contents;
 
+
     // Determine how to design the route
     if (directRoute) {
         // Just add in the sender and receiver
@@ -325,6 +339,9 @@ Message MeshNode::craftMessage(std::string user, std::string type, Json::Value c
         outgoingMessage.route.push_back(user);
     } else {
         // Add in the sender and all the relevant route
+        if (routingTable[user].empty()) {
+            log << "Crafting " << user << ": " << type << std::endl;
+        }
         for (auto node : routingTable[user]) {
             outgoingMessage.route.push_back(node);
         }
@@ -348,6 +365,8 @@ void MeshNode::sendMessage(std::string user, Message message) {
         }
 
         packet << finalMessage.toStyledString();
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(connections[user]->lag));
 
         if (connections[user]->socket->send(packet) != sf::Socket::Done) {
             log << "Failed to send a message to " << user << ":" << std::endl << finalMessage.toStyledString() << std::endl;
@@ -394,7 +413,7 @@ void MeshNode::handleMessage(Message message) {
 
 void MeshNode::handleContent(Message message) {
     if (message.type == "ping") {
-        pong(message.route[0], message.contents);
+        pong(message.route.front(), message.contents);
     } else if (message.type == "pong") {
         updatePing(message.route.front(), message.contents);
     } else if (message.type == "sendConnections") {
@@ -505,7 +524,7 @@ void MeshNode::beginOptimization(std::string userToBeOptimized, std::string user
     Json::Value message, firstUser;
     message["destination"] = userToBeOptimized;
     firstUser["name"] = userToSendThrough;
-    firstUser["ping"] = connections[userToSendThrough]->ping.currentPing + connections[userToSendThrough]->lag;
+    firstUser["ping"] = connections[userToSendThrough]->ping.currentPing;
     message["data"].append(firstUser);
 
     Message outgoingMessage = craftMessage(userToSendThrough, "optimizeRoute", message, true);
@@ -552,7 +571,7 @@ void MeshNode::forwardOptimization(Message message) {
                 // Add the ping of that user to this message
                 Json::Value nextUser;
                 nextUser["name"] = connection.first;
-                nextUser["ping"] = connection.second->ping.currentPing + connection.second->lag;
+                nextUser["ping"] = connection.second->ping.currentPing;
 
                 // Add the path to that user to this message
                 message.contents["data"].append(nextUser);
@@ -569,19 +588,21 @@ void MeshNode::returnOptimization(Message message) {
     if (message.route.back() == name) {
         std::string destination = message.contents["destination"].asString();
         // See if the final ping is < the current ping + lag && it's not the same as the old route
-        if (message.contents["finalPing"].asUInt() < (connections[destination]->ping.currentPing + connections[destination]->lag) && 
-            message.route != connections[destination]->ping.optimalRoute) {
-            log << "Updating route to " << message.contents["destination"].asString() << " with " << message.contents["finalPing"].asString() << "ms (with " << connections[destination]->lag << "ms lag) route: " << std::endl;
-            connections[destination]->ping.optimalRoute = message.route;
-            routingTable[destination].clear();
+        if (message.contents["finalPing"].asUInt() < connections[destination]->ping.optimumPing) {
+            log << "Updating route to " << message.contents["destination"].asString() << " with " << message.contents["finalPing"].asString() << "ms with route: " << std::endl;
+            connections[destination]->ping.optimumPing = message.contents["finalPing"].asUInt();
+
+            std::vector<std::string> newRoute;
             for (auto route = message.route.rbegin(); route != message.route.rend(); ++route) {
                 if (*route != message.route.front()) {
                     log << *route << " -> ";
                 } else {
                     log << *route << std::endl;
                 }
-                routingTable[destination].push_back(*route);
+                newRoute.push_back(*route);
             }
+            routingTable[destination] = newRoute;
+            return;
         }
     } else {
         forwardMessage(message);
@@ -619,7 +640,7 @@ void MeshNode::purgeFromRoutes(std::string user) {
 
 void MeshNode::listConnections() {
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
-        log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << " with " << connection->second->ping.currentPing << "ms" << std::endl;
+        log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << " with " << connection->second->ping.currentPing << "ms (and " << connection->second->lag << "ms lag)" << std::endl;
         if (routingTable[connection->first].size() > 1) {
             log << "Route to " << connection->first << ":" << std::endl;
             for (auto route = routingTable[connection->first].begin(); route != routingTable[connection->first].end(); route++) {

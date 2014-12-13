@@ -16,9 +16,6 @@
     <Filter Include="Networking">
       <UniqueIdentifier>{99b1174f-7038-4d8b-b175-b1eb40a764f6}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Networking\MessageHandlers">
-      <UniqueIdentifier>{a734a0f6-1c49-4dcf-928c-32107eb1c7ad}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -40,9 +37,6 @@
     </ClInclude>
     <ClInclude Include="MeshNode.h">
       <Filter>Networking</Filter>
-    </ClInclude>
-    <ClInclude Include="MessageHandler.h">
-      <Filter>Networking\MessageHandlers</Filter>
     </ClInclude>
     <ClInclude Include="MessageQueue.h">
       <Filter>Header Files</Filter>

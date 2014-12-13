@@ -27,7 +27,7 @@ struct PingInfo {
     unsigned long long sum;
     unsigned long long count;
     unsigned long long currentPing;
-    std::vector<std::string> optimalRoute;
+    unsigned long long optimumPing;
     std::chrono::system_clock::time_point lastPing;
 };
 
@@ -79,7 +79,7 @@ struct Message {
 const int kListeningPort = 10010;  // Default listening port
 const int kListenerWaitTime = 10; // Wait x ms between messages
 const std::string kDefaultName = "test"; // Default name
-const int kConnectionTimeout = 2000; // Cancel a connection if it exceeds x ms
+const int kConnectionTimeout = 5000; // Cancel a connection if it exceeds x ms
 const int kHeartbeatRate = 100; // Send a heartbeat every x ms
 const int kPingReportRate = 250; // Print out the ping for a connection every x ms
 const int kPingUpdateRate = 10; // Compute the average ping every x ms
@@ -102,7 +102,7 @@ private:
     unsigned short listeningPort;
     std::string name;
     std::map<std::string, std::unique_ptr<Connection>> connections;
-    std::chrono::system_clock::time_point mapsInvalidated;
+    std::chrono::system_clock::time_point connectionsInvalidated;
 
     // Listening and handling new clients
     void listen();
@@ -149,5 +149,6 @@ private:
     void forwardOptimization(Message message);
     void returnOptimization(Message message);
     std::map<std::string, std::vector<std::string>> routingTable;
+    std::chrono::system_clock::time_point routingInvalidated;
 };
 #endif // __MESHNODE_H__
