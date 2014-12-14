@@ -1,0 +1,133 @@
+----- Messaging Diagrams -----
+Socket:
+Node1   <---- connectTo() ----  Node2
+Node1   ----- listen() ------>  Node2
+
+Initial Connection:
+Node1  ---- submitInfo() ---->  Node2   --addConnection(Node1)
+Node1  <--- submitInfo() -----  Node2   --addConnection(Node2)
+
+Ping:
+Node1  -------- ping() ------>  Node2;  Sends Node1 current timestmap
+Node1  <------- pong() -------  Node2;  Node1->updatePing(Node2's connection object);
+
+Node1  <------- ping() -------  Node2;
+Node1  -------- pong() ------>  Node2;  Node2->updatePing(Node1's connection object);
+
+Graph Update:
+Node1 -- sendConnections() -->  Node2;  Node2 checks to see if it's missing any of the users
+        if (missing a user)
+Node1 <--- requestUser() -----  Node2;  Node2 asks for the user
+Node1 -- sendConnection() --->  Node2;  -- receiveConnection() -> Node1 sends the connection info so Node2 can connect (sends the listener port
+
+GettingPathways
+Node1 -- askConnections() --->  Node2:  get all users they're connected to and their pings
+Node2 <- sendConnections() ---  Node2:  send all users and their pings
+
+Optimizing
+Node1 -- optimizeRoutes() --->  Node2
+                                Node2  -- optimizeRoutes() -->  Node3
+                                                                Node3  -- optimizeRoutes() -->  Node4
+                                                                Node3  <- optimizeRoutes() ---  Node4
+                                Node2  <- optimizeRoutes() ---  Node3
+Node1 <- optimizeRoutes() ----  Node1
+
+----- Methods -----
+connectTo(sf::IpAddress, unsigned short)
+
+listen() (threaded loop)
+     listens for incoming connection requests and messages
+
+submitInfo(sf::TcpSocket)
+    sends json over the raw socket, calls addConnection();
+
+addConnection(sf::IpAddress pubicAddress, unsigned short personalPort, unsigned short listeningPort, std::string name, sf::TcpSocket socket)
+    crafts Connection objects
+
+sendMessage(std::string user, std::string type, Json::Value message)
+    uses the Connections and RoutingTable to craft and send off messages
+
+receiveMessage(std::string sender, Json::Value message)
+    parses messages and sends them to their respective method || relays them down the pathway (if they're not the destination)
+
+---
+
+sendConnections(std::string user)
+    builds a list of users and pings, sends that to the user
+
+requestUser(std::string user)
+    asks for a user of that name
+
+sendConnection(std::string user) "connection"
+    sends off information to connect to that user
+
+receiveConnection(Json::Value message) "receive_connection"
+    grabs the connection from the previous send connection request;
+
+---
+
+ping(std::string user) "ping"
+    sends off the current timestamp; uses routing table; acts a heartbeat
+
+pong(Json::Value message) "pong"
+    does the time again and updates the connection; acts a heartbeat
+
+---
+
+askConnections() "ask_connections"
+    ask for all users and pings you currently have
+
+receiveConnections(std::string sender, std::map<std::string name, PingInfo>) "receive_connections"
+    receive all users and pings, see if my ping to sender + the next hop is cheaper, if so update RouteTable
+
+---
+
+optimizeRoutes(): "optimize_connections"
+    builds a table of users and my pings to my users, sends them off
+
+receieveOptimize() "receive_optimize"
+    receives the table, if they're the destination, sends it back in visited pathway; else push to the pings and send along pathway.
+
+----- Objects -----
+
+Connection {
+    sf::IpAddress publicAddress;
+    unsigned short personalPort; (the handle I have)
+    unsigned short listeningPort; (the port you're listening on)
+    sf::TcpSocket socket;
+    PingInfo ping
+}
+    stored in a map<std::string name, std::unique_ptr<Connection>> Connections
+
+Route {
+    std::vector<std::string>
+}
+    stored in a map<std::string name, std::vector<std::string>> RoutingTable
+
+Ping {
+    unsigned long long currentSum;
+    unsigned long long currentCount;
+    unsigned long long currentPing;
+    std::chrono::time_point lastPingTime;
+    std::thread heartbeatThread
+}
+    contains all relevant ping information about the local connection to that person
+
+Message {
+    Json::Value body
+    std::string type
+    std::vector<std::string> pathway (destination is the last element in the pathway; found by iterating to your own name, then ++)
+}
+
+OptimizeMessage {
+    std::map<std::string, std::vector<Path>>
+    std::vector<std::string> pathway
+    std::vector<std::string> visited
+
+    Path {
+        std::string starting
+        std::string ending
+        int ping
+    }
+}
+

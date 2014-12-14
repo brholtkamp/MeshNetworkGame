@@ -145,6 +145,7 @@ void Game::playGame() {
                     }
                 }
                 move();
+                checkForTag();
 
 #if debug
                 log << "Player position: " << players[playerName].x << ":" << players[playerName].y << std::endl;
@@ -170,7 +171,6 @@ void Game::playGame() {
             window.draw(circle);
         }
 
-        checkForTag();
 
 #if debug
         for (int i = 0; i < boardDimension; i++) {
