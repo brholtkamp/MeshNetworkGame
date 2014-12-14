@@ -3,6 +3,7 @@
 #include <iostream>
 #include <chrono>
 
+#include "Game.h"
 #include "MeshNode.h"
 
 int main(int argc, char *argv[]) {
@@ -11,35 +12,37 @@ int main(int argc, char *argv[]) {
     std::cout << "Please give your node a name" << std::endl;
     std::cin >> name;
 
+    std::shared_ptr<Game> game(new Game(name));
     std::unique_ptr<MeshNode> node(new MeshNode(10010, name));
+    node->registerHandler(game);
 
     std::string address;
     unsigned short port;
 
     out << "Please enter a host to connect to: " << std::endl;
     in >> address;
-     
+
     while (address != "quit") {
         out << "Please enter a port to use: "<< std::endl;
         in >> port;
 
         if (!node->connectTo(address, port)) {
-                log << "Failed to connect to " << address << ":" << port << std::endl;
+            log << "Failed to connect to " << address << ":" << port << std::endl;
         }
 
         out << "Please enter a host to connect to (or quit to move into the menu): " << std::endl;
         in >> address;
     }
 
-    std::string foo;
+    std::string choice;
 
-    while (foo != "quit") {
+    while (choice != "quit") {
         out << "Type something to do " << std::endl;
-        in >> foo;
+        in >> choice;
 
-        if (foo == "info") {
+        if (choice == "info") {
             node->listConnections();
-        } else if (foo == "lag") {
+        } else if (choice == "lag") {
             std::string user;
             unsigned int lag;
 
@@ -49,9 +52,13 @@ int main(int argc, char *argv[]) {
             in >> lag;
 
             node->setLag(user, lag);
+        } else if (choice == "start") {
+            game->startGame(true);
+        } else if (choice == "ready") {
+            game->readyUp();
         } else {
             Json::Value message;
-            message["test"] = foo;
+            message["test"] = choice;
             node->broadcast("test", message);
         }
     }

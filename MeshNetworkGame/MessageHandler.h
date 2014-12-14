@@ -5,11 +5,13 @@
 #include <vector>
 #include <memory>
 
+#include "MeshNode.h"
+
 class MeshNode;
 
 class MessageHandler {
 public:
-    virtual void handleMessage(sf::IpAddress fromAddress, unsigned short fromPort, std::string type, Json::Value message) = 0;
+    virtual void handleMessage(std::string sender, std::string type, Json::Value message) = 0;
     void setMeshNode(std::unique_ptr<MeshNode> _node) { node = std::move(_node); }
     std::vector<std::string> getMessageTypes() { return messageTypes; }
 protected:

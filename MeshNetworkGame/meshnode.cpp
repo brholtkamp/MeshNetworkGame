@@ -30,8 +30,8 @@ MeshNode::~MeshNode() {
 
     // Iterate through our connections and clear all threads
     for (auto connection = connections.begin(); connection != connections.end(); ++connection) {
-        connection->second->timedOut = true;
-        connection->second->heartbeatThread.join();
+        connection->second->disconnected = true;
+        connection->second->pingThread.join();
         connection->second->connectionRequestThread.join();
         connection->second->optimizationThread.join();
     }
@@ -93,7 +93,7 @@ void MeshNode::listen() {
                                     break;
                                 }
                             }
-                        } else if (connection->second->timedOut) {
+                        } else if (connection->second->disconnected) {
                             log << connection->first << " has timed out" << std::endl;
                             removeConnection(connection->first); 
                             if (!connections.empty()) {
@@ -113,23 +113,17 @@ void MeshNode::listen() {
     return;
 }
 
-void MeshNode::heartbeat(std::string user) {
-    while (!connections[user]->timedOut) {
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - connections[user]->ping.lastPing).count() % kConnectionTimeout == 0 && connections[user]->ping.currentPing != 0) {
-            log << user << " timed out on heartbeats" << std::endl;
-            connections[user]->timedOut = true;
-            return;
-        }
-
+void MeshNode::pingConnection(std::string user) {
+    while (!connections[user]->disconnected) {
         ping(user);
-        std::this_thread::sleep_for(std::chrono::milliseconds(kHeartbeatRate));
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPingRate));
     }
 
     return;
 }
 
 void MeshNode::searchConnections(std::string user) {
-    while (!connections[user]->timedOut) {
+    while (!connections[user]->disconnected) {
         sendConnections(user);
         std::this_thread::sleep_for(std::chrono::milliseconds(kUpdateNetworkRate));
     }
@@ -138,7 +132,7 @@ void MeshNode::searchConnections(std::string user) {
 }
 
 void MeshNode::optimize(std::string user) {
-    while (!connections[user]->timedOut) {
+    while (!connections[user]->disconnected) {
         std::chrono::system_clock::time_point beganOptimizing = std::chrono::system_clock::now();
         // Iterate through all available connections that aren't to the user in question
         for (auto connection = connections.begin(); connection != connections.end(); connection++) {
@@ -184,7 +178,9 @@ void MeshNode::updatePing(std::string user, Json::Value message) {
         connections[user]->ping.currentPing = newPing;
         if (connections[user]->ping.currentPing < connections[user]->ping.optimumPing) {
             connections[user]->ping.optimumPing = connections[user]->ping.currentPing;
+#if verbose
             log << "Direct route is more efficient with " << newPing << "ms" << std::endl;
+#endif
             std::vector<std::string> newRoute;
             newRoute.push_back(name);
             newRoute.push_back(user);
@@ -256,7 +252,7 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
         connections[clientName]->ping.optimumPing = 9999;
         connections[clientName]->ping.lastPing = std::chrono::system_clock::now();
         connections[clientName]->lag = 0;
-        connections[clientName]->timedOut = false;
+        connections[clientName]->disconnected = false;
 
         // Add to the multiplexer and make a direct routing table entry
         selector->add(*connections[clientName]->socket);
@@ -264,7 +260,7 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
         routingTable[clientName].push_back(clientName);
 
         // Spawn all relevant threads
-        connections[clientName]->heartbeatThread = std::move(std::thread(&MeshNode::heartbeat, this, clientName));
+        connections[clientName]->pingThread = std::move(std::thread(&MeshNode::pingConnection, this, clientName));
         connections[clientName]->connectionRequestThread = std::move(std::thread(&MeshNode::searchConnections, this, clientName));
         connections[clientName]->optimizationThread = std::move(std::thread(&MeshNode::optimize, this, clientName));
 
@@ -284,8 +280,8 @@ void MeshNode::removeConnection(std::string user) {
     selector->remove(*connections[user]->socket);
 
     // Kill all threads belonging to that connections[user]
-    connections[user]->timedOut = true;
-    connections[user]->heartbeatThread.join();
+    connections[user]->disconnected = true;
+    connections[user]->pingThread.join();
     connections[user]->connectionRequestThread.join();
     connections[user]->optimizationThread.join();
 
@@ -340,7 +336,7 @@ Message MeshNode::craftMessage(std::string user, std::string type, Json::Value c
     } else {
         // Add in the sender and all the relevant route
         if (routingTable[user].empty()) {
-            log << "Crafting " << user << ": " << type << std::endl;
+            log << "Routing table for " << user << " is empty!!";
         }
         for (auto node : routingTable[user]) {
             outgoingMessage.route.push_back(node);
@@ -370,7 +366,7 @@ void MeshNode::sendMessage(std::string user, Message message) {
 
         if (connections[user]->socket->send(packet) != sf::Socket::Done) {
             log << "Failed to send a message to " << user << ":" << std::endl << finalMessage.toStyledString() << std::endl;
-            connections[user]->timedOut = true;
+            connections[user]->disconnected = true;
         }
         return;
     } else {
@@ -390,6 +386,11 @@ void MeshNode::forwardMessage(Message message) {
     sendMessage(nextUser, message);
 }
 
+void MeshNode::broadcast(std::string type) {
+    Json::Value message;
+    broadcast(type, message);
+}
+
 void MeshNode::broadcast(std::string type, Json::Value message) {
     // Iterate through all available connections and broadcast the same message
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
@@ -405,7 +406,9 @@ void MeshNode::handleMessage(Message message) {
     } else {
         // If this isn't a system message, put it into the log for view
         if (!isSystemMessage(message)) {
+#if verbose
             log << "Forwarding " << std::endl << message.toString() << std::endl;
+#endif
         }
         forwardMessage(message);
     }
@@ -430,6 +433,8 @@ void MeshNode::handleContent(Message message) {
         forwardOptimization(message);
     } else if (message.type == "receiveOptimizedRoute"){
         returnOptimization(message);
+    } else if (handlers.find(message.type) != handlers.end()) {
+        handlers[message.type]->handleMessage(message.route.front(), message.type, message.contents);
     } else {
         log << message.toString() << std::endl;
     }
@@ -589,16 +594,20 @@ void MeshNode::returnOptimization(Message message) {
         std::string destination = message.contents["destination"].asString();
         // See if the final ping is < the current ping + lag && it's not the same as the old route
         if (message.contents["finalPing"].asUInt() < connections[destination]->ping.optimumPing) {
+#if verbose
             log << "Updating route to " << message.contents["destination"].asString() << " with " << message.contents["finalPing"].asString() << "ms with route: " << std::endl;
+#endif
             connections[destination]->ping.optimumPing = message.contents["finalPing"].asUInt();
 
             std::vector<std::string> newRoute;
             for (auto route = message.route.rbegin(); route != message.route.rend(); ++route) {
+#if verbose
                 if (*route != message.route.front()) {
                     log << *route << " -> ";
                 } else {
                     log << *route << std::endl;
                 }
+#endif
                 newRoute.push_back(*route);
             }
             routingTable[destination] = newRoute;
@@ -651,5 +660,27 @@ void MeshNode::listConnections() {
                 }
             }
         }
+    }
+}
+
+unsigned int MeshNode::numberOfConnections() {
+    return connections.size();
+}
+
+bool MeshNode::registerHandler(std::shared_ptr<MessageHandler> handler) {
+    for (auto handle : handler->getMessageTypes()) {
+        if (handlers.find(handle) != handlers.end()) {
+            log << "Handle " << handle << " already exists, overwritten by a new handler" << std::endl;
+        }
+        handlers[handle] = handler;
+    }
+    handler->setMeshNode(std::unique_ptr<MeshNode>(this));
+    return true;
+}
+
+void MeshNode::listHandlers() {
+    log << "All registered handles: " << std::endl;
+    for (auto& handle : handlers) {
+        log << handle.first << std::endl;
     }
 }

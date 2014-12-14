@@ -8,6 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <string>
 
 #include <vector>
 #include <deque>
@@ -19,6 +20,11 @@
 #include <functional>
 #include <chrono>
 
+#include "MessageHandler.h"
+
+class MessageHandler;
+
+#define verbose 0
 #define out std::cout 
 #define in  std::cin
 #define log std::cerr
@@ -39,8 +45,8 @@ struct Connection {
     PingInfo ping;
     unsigned int lag;
 
-    bool timedOut;
-    std::thread heartbeatThread;
+    bool disconnected;
+    std::thread pingThread;
     std::thread connectionRequestThread;
     std::thread optimizationThread;
 };
@@ -80,12 +86,12 @@ const int kListeningPort = 10010;  // Default listening port
 const int kListenerWaitTime = 10; // Wait x ms between messages
 const std::string kDefaultName = "test"; // Default name
 const int kConnectionTimeout = 5000; // Cancel a connection if it exceeds x ms
-const int kHeartbeatRate = 100; // Send a heartbeat every x ms
-const int kPingReportRate = 250; // Print out the ping for a connection every x ms
-const int kPingUpdateRate = 10; // Compute the average ping every x ms
-const int kPingDumpRate = 100; // Every x pings, reset the sum
+const int kPingRate = 100; // Send a ping every x ms
+const int kPingReportRate = 500; // Print out the ping for a connection every x ms
+const int kPingUpdateRate = 100; // Compute the average ping every x ms
+const int kPingDumpRate = 1000; // Every x pings, reset the sum
 const int kUpdateNetworkRate = 1000; // Every x pings, ask other nodes for more nodes
-const int kRouteOptimizationRate = 2000; // Attempt to optimize the route after x ms
+const int kRouteOptimizationRate = 1500; // Attempt to optimize the route after x ms
 
 class MeshNode {
 public:
@@ -93,9 +99,13 @@ public:
     ~MeshNode();
 
     bool connectTo(sf::IpAddress address, unsigned short port);
+    bool registerHandler(std::shared_ptr<MessageHandler> handler);
     void setLag(std::string user, unsigned int lag);
+    void broadcast(std::string type);
     void broadcast(std::string type, Json::Value message);
+    unsigned int numberOfConnections();
     void listConnections();
+    void listHandlers();
 private:
     // Local info
     sf::IpAddress localAddress;
@@ -116,8 +126,8 @@ private:
     std::unique_ptr<sf::SocketSelector> selector;
     bool listening;
 
-    // Heart beat
-    void heartbeat(std::string);
+    // Ping measuring 
+    void pingConnection(std::string);
     void ping(std::string name);
     void pong(std::string name, Json::Value message);
     void updatePing(std::string name, Json::Value message);
@@ -150,5 +160,8 @@ private:
     void returnOptimization(Message message);
     std::map<std::string, std::vector<std::string>> routingTable;
     std::chrono::system_clock::time_point routingInvalidated;
+
+    // Message handlers
+    std::map<std::string, std::shared_ptr<MessageHandler>> handlers;
 };
 #endif // __MESHNODE_H__

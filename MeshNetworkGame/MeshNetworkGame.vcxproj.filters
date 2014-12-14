@@ -16,6 +16,9 @@
     <Filter Include="Networking">
       <UniqueIdentifier>{99b1174f-7038-4d8b-b175-b1eb40a764f6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Game">
+      <UniqueIdentifier>{ee230ad8-aa9d-478f-b912-19b0a20e7053}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -26,6 +29,9 @@
     </ClCompile>
     <ClCompile Include="MeshNode.cpp">
       <Filter>Networking</Filter>
+    </ClCompile>
+    <ClCompile Include="Game.cpp">
+      <Filter>Game</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -38,8 +44,21 @@
     <ClInclude Include="MeshNode.h">
       <Filter>Networking</Filter>
     </ClInclude>
-    <ClInclude Include="MessageQueue.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="MessageHandler.h">
+      <Filter>Networking</Filter>
     </ClInclude>
+    <ClInclude Include="Game.h">
+      <Filter>Game</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="..\Debug\board.txt">
+      <Filter>Resource Files</Filter>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Font Include="..\Debug\sansation.ttf">
+      <Filter>Resource Files</Filter>
+    </Font>
   </ItemGroup>
 </Project>
