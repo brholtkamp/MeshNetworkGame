@@ -4,7 +4,6 @@ Game::Game(std::string name): playerName(name) {
     messageTypes.push_back("move");
     messageTypes.push_back("start");
     messageTypes.push_back("ready");
-    messageTypes.push_back("tag");
 
     gameStarted = false;
     imReady = false;
@@ -16,7 +15,6 @@ Game::Game(std::string name): playerName(name) {
 
 void Game::handleMessage(std::string sender, std::string type, Json::Value message) {
     if (type == "move") {
-        log << "Got move" << std::endl;
         movePlayer(sender, message);
     } else if (type == "start") {
         startGame(false);
@@ -39,9 +37,7 @@ void Game::handleMessage(std::string sender, std::string type, Json::Value messa
         }
 
         log << sender << " is ready to play!" << std::endl;
-    } else if (type == "tag") {
-
-    } else {
+    }  else {
         log << "Unknown game message: " << type << std::endl << message.toStyledString() << std::endl;
     }
 }
@@ -145,13 +141,16 @@ void Game::playGame() {
                     }
                 }
                 move();
-                checkForTag();
 
 #if debug
                 log << "Player position: " << players[playerName].x << ":" << players[playerName].y << std::endl;
 #endif
             }
         }
+
+        checkForTag();
+
+        window.clear(sf::Color::Black);
 
         for (int i = 0; i < boardDimension; i++) {
             for (int j = 0; j < boardDimension; j++) {

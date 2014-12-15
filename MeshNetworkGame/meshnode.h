@@ -24,7 +24,7 @@
 
 class MessageHandler;
 
-#define verbose 0
+#define verbose 1
 #define out std::cout 
 #define in  std::cin
 #define log std::cerr
@@ -61,6 +61,7 @@ struct Message {
         if (!route.empty()) { 
             buffer << "From: " << route.front() << std::endl;
             buffer << "To: " << route.back() << std::endl;
+            buffer << "Type: " << type << std::endl;
             buffer << "Route: " << std::endl;
             for (auto node = route.begin(); node != route.end(); ++node) {
                 if (*node != route.back()) {
@@ -87,9 +88,7 @@ const int kListenerWaitTime = 10; // Wait x ms between messages
 const std::string kDefaultName = "test"; // Default name
 const int kConnectionTimeout = 5000; // Cancel a connection if it exceeds x ms
 const int kPingRate = 100; // Send a ping every x ms
-const int kPingReportRate = 500; // Print out the ping for a connection every x ms
-const int kPingUpdateRate = 100; // Compute the average ping every x ms
-const int kPingDumpRate = 1000; // Every x pings, reset the sum
+const int kPingUpdateRate = 50; // Compute the average ping every x ms
 const int kUpdateNetworkRate = 1000; // Every x pings, ask other nodes for more nodes
 const int kRouteOptimizationRate = 1500; // Attempt to optimize the route after x ms
 

@@ -176,6 +176,10 @@ void MeshNode::updatePing(std::string user, Json::Value message) {
         // Cast the long longs to doubles to remove integer division before storage
         unsigned long long newPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count));
         connections[user]->ping.currentPing = newPing;
+
+        // Clear out the ping values so that we get a new history to work with (keeps variance low)
+        connections[user]->ping.count = 0;
+        connections[user]->ping.sum = 0;
         if (connections[user]->ping.currentPing < connections[user]->ping.optimumPing) {
             connections[user]->ping.optimumPing = connections[user]->ping.currentPing;
 #if verbose
@@ -186,12 +190,6 @@ void MeshNode::updatePing(std::string user, Json::Value message) {
             newRoute.push_back(user);
             routingTable[user] = newRoute;
         }
-    }
-
-    if (connections[user]->ping.count % kPingDumpRate == 0) {
-        // Clear out the ping values so that we get a new history to work with (keeps variance low)
-        connections[user]->ping.count = 0;
-        connections[user]->ping.sum = 0;
     }
 }
 
@@ -248,7 +246,7 @@ bool MeshNode::craftConnection(std::unique_ptr<sf::TcpSocket> user, Json::Value 
         // Zero out all of the ping variables for the first run
         connections[clientName]->ping.count = 0;
         connections[clientName]->ping.sum = 0;
-        connections[clientName]->ping.currentPing = 0;
+        connections[clientName]->ping.currentPing = 9999;
         connections[clientName]->ping.optimumPing = 9999;
         connections[clientName]->ping.lastPing = std::chrono::system_clock::now();
         connections[clientName]->lag = 0;
@@ -319,6 +317,10 @@ void MeshNode::setLag(std::string user, unsigned int lag) {
     if (user != name) {
         connections[user]->lag = lag;
         connections[user]->ping.optimumPing = 9999;
+        connections[user]->ping.currentPing = 9999;
+        connections[user]->ping.sum = 0;
+        connections[user]->ping.count = 0;
+        connections[user]->ping.lastPing = std::chrono::system_clock::now();
     }
 }
 
@@ -383,6 +385,12 @@ void MeshNode::forwardMessage(Message message) {
         }
     }
 
+#if verbose
+    if (!isSystemMessage(message)) {
+        log << "Forwarding message of type " << message.type << " to " << message.route.back() << std::endl;
+    }
+#endif
+
     sendMessage(nextUser, message);
 }
 
@@ -395,21 +403,22 @@ void MeshNode::broadcast(std::string type, Json::Value message) {
     // Iterate through all available connections and broadcast the same message
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
         Message outgoingMessage = craftMessage(connection->first, type, message);
+        log << "Broadcasting " << std::endl << outgoingMessage.toString();
         sendMessage(connection->first, outgoingMessage);
     }
 }
 
 void MeshNode::handleMessage(Message message) {
-    // Check to see if we're the destination 
+    // Check to see if we're the destination
     if (message.route.back() == name) {
         handleContent(message);
     } else {
+#if verbose
         // If this isn't a system message, put it into the log for view
         if (!isSystemMessage(message)) {
-#if verbose
             log << "Forwarding " << std::endl << message.toString() << std::endl;
-#endif
         }
+#endif
         forwardMessage(message);
     }
 }
@@ -441,16 +450,16 @@ void MeshNode::handleContent(Message message) {
 }
 
 bool MeshNode::isSystemMessage(Message message) {
-    if (message.type == "ping" || 
-        message.type == "pong" ||
-        message.type == "sendConnections" ||
-        message.type == "requestConnections" ||
-        message.type == "responseConnections" ||
-        message.type == "optimizeRoute" ||
-        message.type == "receiveOptimizedRoute") {
-        return true;
-    } else {
+    if (message.type != "ping" && 
+        message.type != "pong" &&
+        message.type != "sendConnections" &&
+        message.type != "requestConnections" &&
+        message.type != "responseConnections" &&
+        message.type != "optimizeRoute" &&
+        message.type != "receiveOptimizedRoute") {
         return false;
+    } else {
+        return true;
     }
 }
 
@@ -641,6 +650,11 @@ void MeshNode::purgeFromRoutes(std::string user) {
                 route.second.push_back(end);
 
                 log << "Purged " << user << " from route to " << route.second.back() << std::endl;
+                log << "Resetting route to " << end << std::endl;
+
+                connections[end]->ping.currentPing = 9999;
+                connections[end]->ping.optimumPing = 9999;
+                    
                 break;
             }
         }
@@ -649,7 +663,16 @@ void MeshNode::purgeFromRoutes(std::string user) {
 
 void MeshNode::listConnections() {
     for (auto connection = connections.begin(); connection != connections.end(); connection++) {
-        log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << " with " << connection->second->ping.currentPing << "ms (and " << connection->second->lag << "ms lag)" << std::endl;
+        log << connection->first << ": " << connection->second->address << ":" << connection->second->listeningPort << " on " << connection->second->personalPort << std::endl;
+        if (connection->second->ping.currentPing == 9999 || connection->second->ping.optimumPing == 9999) {
+            log << "Currently calculating ping: " << kPingUpdateRate - connection->second->ping.count << " more pings required" <<std::endl;
+        } else {
+            log << "Direct ping to " << connection->first << ": " << connection->second->ping.currentPing << "ms" << std::endl;
+            log << "Current route's ping to " << connection->first << ": " << connection->second->ping.optimumPing << "ms " << std::endl; 
+        }
+        if (connection->second->lag > 0) {
+            log << "Has " << connection->second->lag << "ms artificial lag" << std::endl;
+        }
         if (routingTable[connection->first].size() > 1) {
             log << "Route to " << connection->first << ":" << std::endl;
             for (auto route = routingTable[connection->first].begin(); route != routingTable[connection->first].end(); route++) {
@@ -660,6 +683,7 @@ void MeshNode::listConnections() {
                 }
             }
         }
+        log << std::endl;
     }
 }
 
