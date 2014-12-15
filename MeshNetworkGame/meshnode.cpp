@@ -174,7 +174,7 @@ void MeshNode::updatePing(std::string user, Json::Value message) {
 
     if (connections[user]->ping.count % kPingUpdateRate == 0) {
         // Cast the long longs to doubles to remove integer division before storage
-        unsigned long long newPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count));
+        unsigned long long newPing = static_cast<unsigned long long>(static_cast<double>(connections[user]->ping.sum) / static_cast<double>(connections[user]->ping.count)) + connections[user]->lag;
         connections[user]->ping.currentPing = newPing;
 
         // Clear out the ping values so that we get a new history to work with (keeps variance low)
@@ -364,8 +364,6 @@ void MeshNode::sendMessage(std::string user, Message message) {
 
         packet << finalMessage.toStyledString();
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(connections[user]->lag));
-
         if (connections[user]->socket->send(packet) != sf::Socket::Done) {
             log << "Failed to send a message to " << user << ":" << std::endl << finalMessage.toStyledString() << std::endl;
             connections[user]->disconnected = true;
@@ -538,7 +536,7 @@ void MeshNode::beginOptimization(std::string userToBeOptimized, std::string user
     Json::Value message, firstUser;
     message["destination"] = userToBeOptimized;
     firstUser["name"] = userToSendThrough;
-    firstUser["ping"] = connections[userToSendThrough]->ping.currentPing;
+    firstUser["ping"] = connections[userToSendThrough]->ping.currentPing + connections[userToSendThrough]->lag;
     message["data"].append(firstUser);
 
     Message outgoingMessage = craftMessage(userToSendThrough, "optimizeRoute", message, true);
@@ -585,14 +583,14 @@ void MeshNode::forwardOptimization(Message message) {
                 // Add the ping of that user to this message
                 Json::Value nextUser;
                 nextUser["name"] = connection.first;
-                nextUser["ping"] = connection.second->ping.currentPing;
+                nextUser["ping"] = connection.second->ping.currentPing + connection.second->lag;
 
                 // Add the path to that user to this message
-                message.contents["data"].append(nextUser);
-                message.route.push_back(connection.first);
+                newMessage.contents["data"].append(nextUser);
+                newMessage.route.push_back(connection.first);
 
                 // Send it off
-                forwardMessage(message);
+                forwardMessage(newMessage);
             } 
         }
     }
